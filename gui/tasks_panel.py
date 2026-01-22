@@ -289,9 +289,31 @@ class TasksPanel(QWidget):
         layout.addWidget(title)
         layout.addLayout(stats_layout, 1)
         layout.addWidget(quick_add_btn)
+        # Botón IA
+        ai_btn = QPushButton("🤖 IA")
+        ai_btn.clicked.connect(self.analyze_tasks_with_ai)
+        layout.addWidget(ai_btn)
         
         return header
     
+    def analyze_tasks_with_ai(self):
+        """Analizar tareas con IA"""
+        from assistant_managers import gemini_manager, voice_manager
+        
+        if not gemini_manager.model:
+            QMessageBox.warning(self, "IA no disponible", 
+                              "Gemini AI no está configurado.")
+            return
+        
+        # Obtener análisis de Gemini
+        analysis = gemini_manager.analyze_tasks(self.tasks)
+        
+        # Mostrar resultado
+        QMessageBox.information(self, "🤖 Análisis de IA", analysis)
+        
+        # Hablar resultado
+        if voice_manager.available:
+            voice_manager.speak(analysis)
     def create_stat_widget(self, label, value, color):
         """Crear widget de estadística"""
         widget = QFrame()

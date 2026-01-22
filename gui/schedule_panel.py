@@ -272,8 +272,84 @@ class SchedulePanel(QWidget):
         layout.addStretch()
         layout.addWidget(self.date_label)
         layout.addLayout(nav_layout)
+                # Botón IA
+        self.ai_btn = QPushButton("🤖 IA")
+        self.ai_btn.setToolTip("Analizar horario con IA")
+        self.ai_btn.setFixedSize(40, 30)
+        self.ai_btn.clicked.connect(self.analyze_with_ai)
+        nav_layout.addWidget(self.ai_btn)
         
         return header
+    def analyze_with_ai(self):
+        """Analizar horario con IA"""
+        from assistant_managers import gemini_manager, voice_manager
+        
+        if not gemini_manager.model:
+            QMessageBox.warning(self, "IA no disponible", 
+                              "Gemini AI no está configurado. Verifica tu API key.")
+            return
+        
+        # Obtener eventos del día seleccionado
+        selected_date = self.calendar.selectedDate().toString("yyyy-MM-dd")
+        day_events = [e for e in self.events if e['date'] == selected_date]
+        
+        current_time = QTime.currentTime().toString("hh:mm")
+        current_date = QDate.currentDate().toString("dd/MM/yyyy")
+        
+        # Mostrar indicador de procesamiento
+        QMessageBox.information(self, "Analizando", 
+                              "🤖 IA está analizando tu horario...")
+        
+        # Obtener análisis
+        analysis = gemini_manager.analyze_schedule(day_events, f"{current_date} {current_time}")
+        
+        # Mostrar resultado
+        dialog = QDialog(self)
+        dialog.setWindowTitle("🤖 Análisis de IA")
+        dialog.setMinimumSize(500, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Texto del análisis
+        text_edit = QTextEdit()
+        text_edit.setPlainText(analysis)
+        text_edit.setReadOnly(True)
+        text_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: #202124;
+                color: #e8eaed;
+                border: 1px solid #3c4043;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 13px;
+            }
+        """)
+        
+        # Botones
+        button_layout = QHBoxLayout()
+        
+        speak_btn = QPushButton("🔊 Escuchar")
+        speak_btn.clicked.connect(lambda: voice_manager.speak(analysis))
+        
+        copy_btn = QPushButton("📋 Copiar")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(analysis))
+        
+        close_btn = QPushButton("Cerrar")
+        close_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addWidget(speak_btn)
+        button_layout.addWidget(copy_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+        
+        layout.addWidget(text_edit, 1)
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+        
+        # Hablar automáticamente si hay eventos
+        if day_events and voice_manager.available:
+            voice_manager.speak(analysis)
     
     def create_left_panel(self):
         """Crear panel izquierdo (calendario y formulario)"""

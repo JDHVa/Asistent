@@ -310,6 +310,11 @@ class RemindersPanel(QWidget):
         layout.addWidget(title)
         layout.addLayout(status_layout, 1)
         layout.addWidget(quick_btn)
+                # Botón IA
+        ai_btn = QPushButton("🤖 IA")
+        ai_btn.clicked.connect(self.analyze_reminders_with_ai)
+        layout.addWidget(ai_btn)
+        
         
         return header
     
@@ -555,7 +560,51 @@ class RemindersPanel(QWidget):
         layout.addWidget(toolbar)
         
         return panel
-    
+    def analyze_reminders_with_ai(self):
+        """Analizar recordatorios con IA"""
+        from assistant_managers import gemini_manager, voice_manager
+        
+        if not gemini_manager.model:
+            QMessageBox.warning(self, "IA no disponible", 
+                              "Gemini AI no está configurado.")
+            return
+        
+        # Obtener recordatorios activos
+        active_reminders = [r for r in self.reminders if r['active'] and not r['completed']]
+        
+        if not active_reminders:
+            QMessageBox.information(self, "Sin recordatorios", 
+                                  "No tienes recordatorios activos.")
+            return
+        
+        # Formatear recordatorios
+        reminders_text = "Recordatorios activos:\n\n"
+        for i, reminder in enumerate(active_reminders[:5], 1):
+            priority_icon = "🔥" if reminder['priority'] == 'alta' else "⚠️" if reminder['priority'] == 'media' else "📌"
+            reminders_text += f"{i}. {priority_icon} {reminder['title']} - {reminder['date_time']}\n"
+        
+        prompt = f"""Analiza estos recordatorios y da recomendaciones:
+
+        {reminders_text}
+
+        Como asistente personal, proporciona:
+        1. Recordatorios importantes
+        2. Sugerencias para no olvidar nada
+        3. Consejos para gestionar el tiempo
+        4. Un mensaje motivacional
+
+        Responde en español."""
+                
+        QMessageBox.information(self, "Analizando", "🤖 IA está analizando tus recordatorios...")
+        analysis = gemini_manager.send_message(prompt, "Eres un asistente personal organizado.")
+        
+        # Mostrar resultado
+        QMessageBox.information(self, "Análisis de IA", analysis)
+        
+        # Hablar resultado
+        if voice_manager.available:
+            voice_manager.speak(analysis)
+
     def create_active_view(self):
         """Crear vista de recordatorios activos"""
         widget = QWidget()

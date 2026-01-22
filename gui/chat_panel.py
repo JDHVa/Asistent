@@ -36,6 +36,7 @@ import io
 from pathlib import Path
 from dotenv import load_dotenv
 import threading
+from assistant_managers import gemini_manager, voice_manager
 
 # Intento de importar bibliotecas de voz con manejo de errores
 try:
@@ -146,250 +147,6 @@ class MessageWidget(QFrame):
                 }
             """)
 
-class GeminiManager:
-    """Gestor para interactuar con Gemini AI"""
-    
-    def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyAm9tYSXoKQfqIBGb_5bWJXcu6r0-Oridk")
-        self.model = None
-        self.conversation_history = []
-        self.initialize_gemini()
-        
-    def initialize_gemini(self):
-        """Inicializar Gemini AI"""
-        try:
-            if not GEMINI_AVAILABLE:
-                print("⚠️ Advertencia: google.generativeai no está instalado")
-                print("Instala con: pip install google-generativeai")
-                return False
-                
-            if not self.api_key:
-                print("⚠️ Advertencia: No se encontró API key para Gemini")
-                return False
-                
-            genai.configure(api_key=self.api_key)
-            
-            # Listar modelos disponibles
-            try:
-                models = genai.list_models()
-                print(f"✅ Modelos disponibles: {len(models)}")
-            except Exception as e:
-                print(f"⚠️ No se pudieron listar modelos: {e}")
-            
-            # Usar el modelo flash que es más rápido
-            model_name = "gemini-2.5-flash"
-            try:
-                self.model = genai.GenerativeModel(model_name)
-                print(f"✅ Modelo Gemini '{model_name}' inicializado correctamente")
-                return True
-            except Exception as e:
-                print(f"⚠️ Error con modelo flash: {e}")
-                # Intentar con otro modelo
-                try:
-                    self.model = genai.GenerativeModel('gemini-pro')
-                    print("✅ Modelo Gemini 'gemini-pro' inicializado correctamente")
-                    return True
-                except Exception as e2:
-                    print(f"❌ Error al inicializar Gemini: {e2}")
-                    return False
-                    
-        except Exception as e:
-            print(f"❌ Error crítico al inicializar Gemini: {e}")
-            return False
-    
-    def send_message(self, message, system_prompt=None):
-        """Enviar mensaje a Gemini y obtener respuesta"""
-        if not self.model:
-            return "❌ Error: Gemini AI no está configurado correctamente. Verifica tu API key."
-        
-        try:
-            # Agregar contexto del sistema si se proporciona
-            if system_prompt:
-                full_prompt = f"{system_prompt}\n\nUsuario: {message}"
-            else:
-                full_prompt = message
-            
-            # Configurar parámetros de generación
-            generation_config = {
-                "temperature": 0.7,
-                "top_p": 0.8,
-                "top_k": 40,
-                "max_output_tokens": 1024,
-            }
-            
-            safety_settings = [
-                {
-                    "category": "HARM_CATEGORY_HARASSMENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_HATE_SPEECH",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-                },
-            ]
-            
-            # Enviar mensaje con historial de conversación
-            chat = self.model.start_chat(history=self.conversation_history)
-            response = chat.send_message(
-                full_prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
-            
-            # Guardar en historial
-            self.conversation_history.append({"role": "user", "parts": [full_prompt]})
-            self.conversation_history.append({"role": "model", "parts": [response.text]})
-            
-            # Limitar historial a 10 mensajes
-            if len(self.conversation_history) > 10:
-                self.conversation_history = self.conversation_history[-10:]
-            
-            return response.text
-            
-        except Exception as e:
-            error_msg = f"❌ Error al comunicarse con Gemini AI: {str(e)}"
-            print(error_msg)
-            return error_msg
-    
-    def clear_history(self):
-        """Limpiar historial de conversación"""
-        self.conversation_history = []
-        print("🗑️ Historial de Gemini limpiado")
-
-class VoiceManager:
-    """Gestor para funcionalidades de voz"""
-    
-    def __init__(self):
-        self.recognizer = None
-        self.microphone = None
-        self.tts_engine = None
-        self.is_listening = False
-        self.available = False
-        
-        # Intentar inicializar componentes de voz
-        self.initialize_voice_components()
-        
-    def initialize_voice_components(self):
-        """Inicializar componentes de voz con manejo de errores"""
-        try:
-            # Inicializar reconocimiento de voz
-            if SPEECH_RECOGNITION_AVAILABLE:
-                self.recognizer = sr.Recognizer()
-                
-                # Intentar obtener micrófono (puede fallar si pyaudio no funciona bien)
-                try:
-                    self.microphone = sr.Microphone()
-                    print("✅ Micrófono inicializado correctamente")
-                except Exception as e:
-                    print(f"⚠️ Error al inicializar micrófono: {e}")
-                    print("⚠️ El reconocimiento de voz puede no funcionar correctamente")
-            else:
-                print("⚠️ Speech Recognition no está disponible")
-            
-            # Inicializar texto a voz
-            if TTS_AVAILABLE:
-                try:
-                    self.tts_engine = pyttsx3.init()
-                    
-                    # Configurar voz en español
-                    voices = self.tts_engine.getProperty('voices')
-                    
-                    # Buscar voz en español
-                    spanish_voice = None
-                    for voice in voices:
-                        if 'spanish' in voice.name.lower() or 'español' in voice.name.lower() or 'espa' in voice.name.lower():
-                            spanish_voice = voice.id
-                            break
-                    
-                    if spanish_voice:
-                        self.tts_engine.setProperty('voice', spanish_voice)
-                        print(f"✅ Voz española configurada: {spanish_voice}")
-                    else:
-                        print("⚠️ No se encontró voz española, usando voz por defecto")
-                    
-                    # Configurar velocidad y volumen
-                    self.tts_engine.setProperty('rate', int(os.getenv("VOICE_SPEECH_RATE", "150")))
-                    self.tts_engine.setProperty('volume', float(os.getenv("VOICE_VOLUME", "0.9")))
-                    print("✅ TTS inicializado correctamente")
-                    
-                except Exception as e:
-                    print(f"❌ Error al inicializar TTS: {e}")
-                    self.tts_engine = None
-            else:
-                print("⚠️ TTS no está disponible")
-            
-            # Marcar como disponible si al menos un componente funciona
-            self.available = (self.recognizer is not None) or (self.tts_engine is not None)
-            
-        except Exception as e:
-            print(f"❌ Error crítico al inicializar voz: {e}")
-            self.available = False
-    
-    def recognize_speech(self):
-        """Reconocer voz del usuario"""
-        if not self.recognizer or not self.microphone:
-            return "❌ Reconocimiento de voz no disponible"
-        
-        try:
-            with self.microphone as source:
-                print("🎤 Escuchando... (habla ahora)")
-                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
-                
-            print("🔍 Procesando audio...")
-            text = self.recognizer.recognize_google(audio, language='es-ES')
-            print(f"✅ Reconocido: {text}")
-            return text
-            
-        except sr.WaitTimeoutError:
-            return "⏱️ Tiempo de espera agotado. Por favor, habla de nuevo."
-        except sr.UnknownValueError:
-            return "❌ No se pudo entender el audio. Por favor, intenta de nuevo."
-        except sr.RequestError as e:
-            return f"❌ Error en el servicio de reconocimiento: {e}"
-        except Exception as e:
-            return f"❌ Error inesperado: {e}"
-    
-    def speak_text(self, text):
-        """Convertir texto a voz"""
-        if not self.tts_engine:
-            print("⚠️ Motor TTS no disponible")
-            return False
-        
-        try:
-            # Limpiar texto para mejor pronunciación
-            clean_text = text.replace('*', '').replace('#', '').replace('```', '')
-            
-            # Usar un hilo para no bloquear la interfaz
-            def speak():
-                try:
-                    self.tts_engine.say(clean_text)
-                    self.tts_engine.runAndWait()
-                except Exception as e:
-                    print(f"❌ Error en hilo de TTS: {e}")
-            
-            thread = threading.Thread(target=speak, daemon=True)
-            thread.start()
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error al hablar: {e}")
-            return False
-    
-    def stop_speaking(self):
-        """Detener habla actual"""
-        if self.tts_engine and hasattr(self.tts_engine, 'isBusy') and self.tts_engine.isBusy():
-            self.tts_engine.stop()
-            return True
-        return False
 
 class ChatPanel(QWidget):
     """Panel principal del chat con todas las funcionalidades"""
@@ -398,16 +155,17 @@ class ChatPanel(QWidget):
     message_sent = Signal(str)
     conversation_cleared = Signal()
     
+class ChatPanel(QWidget):
     def __init__(self):
         super().__init__()
         self.conversation_history = []
         self.current_conversation = []
         self.thinking = False
         
-        # Inicializar gestores
-        self.gemini_manager = GeminiManager()
-        self.voice_manager = VoiceManager()
-        self.voice_enabled = self.voice_manager.available  # Solo activar si está disponible
+        # Usar gestores centralizados
+        self.gemini_manager = gemini_manager
+        self.voice_manager = voice_manager
+        self.voice_enabled = self.voice_manager.available
         
         self.setup_ui()
         self.load_conversation_history()
