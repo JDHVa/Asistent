@@ -1,0 +1,20 @@
+{
+  "id": "23dbea89",
+  "title": "Chat Principal",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hola",
+      "timestamp": "2026-01-21T18:14:01.521122"
+    },
+    {
+      "role": "assistant",
+      "content": "Hola! ¿Qué tal? 😊",
+      "timestamp": "2026-01-21T18:14:02.332143"
+    }
+  ],
+  "model": "gemini-flash-latest",
+  "created_at": "2026-01-21T18:13:54.714609",
+  "updated_at": "2026-01-21T18:14:02.332143",
+  "metadata": {}
+}

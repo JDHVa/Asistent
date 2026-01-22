@@ -1,0 +1,20 @@
+{
+  "id": "b41784e4",
+  "title": "Chat Principal",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hola",
+      "timestamp": "2026-01-21T18:13:41.971455"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! ¿Cómo estás? ¿En qué puedo ayudarte hoy? 😊",
+      "timestamp": "2026-01-21T18:13:43.186414"
+    }
+  ],
+  "model": "gemini-flash-latest",
+  "created_at": "2026-01-21T18:13:36.832259",
+  "updated_at": "2026-01-21T18:13:43.186414",
+  "metadata": {}
+}

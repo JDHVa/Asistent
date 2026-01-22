@@ -1,0 +1,20 @@
+{
+  "id": "9bf9fc16",
+  "title": "Prueba inicial",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hola, ¿cómo estás?",
+      "timestamp": "2026-01-21T18:07:58.683463"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! Soy tu asistente personal. Estoy usando el modo simulación porque no tengo configurada la API de Gemini. ¿En qué puedo ayudarte?",
+      "timestamp": "2026-01-21T18:07:58.683463"
+    }
+  ],
+  "model": "gemini-pro",
+  "created_at": "2026-01-21T18:07:58.683463",
+  "updated_at": "2026-01-21T18:07:58.683463",
+  "metadata": {}
+}

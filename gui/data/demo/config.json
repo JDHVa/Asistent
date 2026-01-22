@@ -1,0 +1,14 @@
+{
+  "preferences": {
+    "theme": "dark",
+    "voice_enabled": true,
+    "notifications": true,
+    "auto_start": false
+  },
+  "stats": {
+    "login_count": 5,
+    "last_login": "2026-01-21T17:39:27.832634",
+    "total_chat_messages": 0,
+    "total_tasks": 0
+  }
+}

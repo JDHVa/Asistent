@@ -1,0 +1,40 @@
+{
+  "id": "1a8f9742",
+  "title": "Chat Principal",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hola cuanto es 2+2",
+      "timestamp": "2026-01-21T16:09:50.942224"
+    },
+    {
+      "role": "assistant",
+      "content": "Hola, 2 + 2 son **4**.",
+      "timestamp": "2026-01-21T16:09:52.998553"
+    },
+    {
+      "role": "user",
+      "content": "y 2!",
+      "timestamp": "2026-01-21T16:09:59.813295"
+    },
+    {
+      "role": "assistant",
+      "content": "Esa notación, el signo de exclamación (!), significa **factorial**.\n\nEl factorial de un número (n!) es la multiplicación de todos los números enteros positivos desde 1 hasta ese número.\n\nPara **2!** (dos factorial):\n\n$$2! = 2 \\times 1 = 2$$\n\nAsí que, **2! es igual a 2**. (Y el segundo 2! es también 2).",
+      "timestamp": "2026-01-21T16:10:02.945082"
+    },
+    {
+      "role": "user",
+      "content": "hola",
+      "timestamp": "2026-01-21T16:10:19.992943"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! ¿En qué más puedo ayudarte?",
+      "timestamp": "2026-01-21T16:10:20.729405"
+    }
+  ],
+  "model": "gemini-flash-latest",
+  "created_at": "2026-01-21T16:09:40.524937",
+  "updated_at": "2026-01-21T16:10:20.729405",
+  "metadata": {}
+}

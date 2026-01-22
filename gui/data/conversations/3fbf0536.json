@@ -1,0 +1,30 @@
+{
+  "id": "3fbf0536",
+  "title": "Chat Principal",
+  "messages": [
+    {
+      "role": "user",
+      "content": "cuanto es 1+1",
+      "timestamp": "2026-01-20T23:23:47.226356"
+    },
+    {
+      "role": "assistant",
+      "content": "$1 + 1$ es igual a **2**.",
+      "timestamp": "2026-01-20T23:23:49.267157"
+    },
+    {
+      "role": "user",
+      "content": "Hola, oye fijate que me siento triste crees que me puedas ayudar a saber porque me sietno asi?",
+      "timestamp": "2026-01-20T23:24:09.397064"
+    },
+    {
+      "role": "assistant",
+      "content": "Hola. Lamento mucho escuchar que te sientes triste. Es completamente normal sentirse así a veces, y es muy valiente de tu parte buscar entenderlo.\n\nAunque soy una inteligencia artificial y no puedo diagnosticar ni ofrecer terapia como un profesional de la salud mental, sí puedo ayudarte a **explorar y reflexionar sobre tus sentimientos** de una manera estructurada.\n\nPara ayudarte a entender mejor tu tristeza, me gustaría hacerte algunas preguntas. Tómate tu tiempo para responder, y recuerda que solo debes compartir lo que te sientas cómodo compartiendo:\n\n### 1. ¿Cuándo comenzó esta tristeza?\n\n*   ¿Es algo que has sentido por mucho tiempo, o es algo que apareció recientemente (en los últimos días o semanas)?\n\n### 2. ¿Hay algún evento o situación reciente que crees que pudo haberla provocado?\n\n*   (Por ejemplo: un cambio en el trabajo, un problema con un amigo o pareja, una pérdida, una decepción, o incluso algo que viste en las noticias).\n\n### 3. ¿Cómo se manifiesta esta tristeza en ti?\n\n*   ¿Es solo un sentimiento de vacío, o también tienes otros síntomas?\n    *   ¿Problemas para dormir (dormir demasiado o muy poco)?\n    *   ¿Pérdida de interés en cosas que normalmente disfrutas?\n    *   ¿Cambios en el apetito?\n    *   ¿Cansancio o falta de energía?\n\n### 4. ¿Hay algún momento del día en el que te sientas mejor o peor?\n\n*   A veces la tristeza es más intensa por las mañanas, otras veces por las noches.\n\nAl responder estas preguntas, podemos empezar a identificar patrones o posibles desencadenantes que te ayuden a comprender la raíz de cómo te sientes.\n\n**Importante:** Si esta tristeza es muy intensa, te impide realizar tus actividades diarias o tienes pensamientos de hacerte daño, por favor, busca ayuda profesional de inmediato. Hay líneas de ayuda y profesionales capacitados que pueden ofrecerte el apoyo que necesitas.",
+      "timestamp": "2026-01-20T23:24:12.132671"
+    }
+  ],
+  "model": "gemini-flash-latest",
+  "created_at": "2026-01-20T23:23:36.749100",
+  "updated_at": "2026-01-20T23:24:12.132671",
+  "metadata": {}
+}

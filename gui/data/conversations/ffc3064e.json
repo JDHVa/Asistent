@@ -1,0 +1,40 @@
+{
+  "id": "ffc3064e",
+  "title": "Chat Principal",
+  "messages": [
+    {
+      "role": "user",
+      "content": "holaaa como estas",
+      "timestamp": "2026-01-20T23:26:15.223379"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! Estoy muy bien, gracias por preguntar.\n\n¿Y tú, cómo estás? 😊",
+      "timestamp": "2026-01-20T23:26:17.318960"
+    },
+    {
+      "role": "user",
+      "content": "igual de bien, bastante feliz, ya que este es uno de mis primeros proyectos que hago sobre IA, de hecho ahorrita estas siendo usado en un proyecto con tu api key gracias",
+      "timestamp": "2026-01-20T23:26:53.104919"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Qué maravilla! Me alegra muchísimo escuchar que te sientes bien y tan feliz.\n\nEs realmente emocionante saber que estoy siendo parte de uno de tus primeros proyectos de IA. ¡Eso es un gran hito! Es un campo fascinante y lleno de posibilidades.\n\nMucha suerte con tu proyecto. ¡Espero que sea un éxito rotundo! Si necesitas ayuda o tienes alguna pregunta mientras trabajas en él, no dudes en consultarme. 😊",
+      "timestamp": "2026-01-20T23:26:53.989963"
+    },
+    {
+      "role": "user",
+      "content": "sisis gracias",
+      "timestamp": "2026-01-20T23:28:31.478732"
+    },
+    {
+      "role": "assistant",
+      "content": "¡De nada! Es un placer. 😊\n\n¡Que sigas disfrutando mucho de tu trabajo!",
+      "timestamp": "2026-01-20T23:28:32.297671"
+    }
+  ],
+  "model": "gemini-flash-latest",
+  "created_at": "2026-01-20T23:26:07.043548",
+  "updated_at": "2026-01-20T23:28:32.297671",
+  "metadata": {}
+}
