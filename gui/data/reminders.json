@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "title": "Tomar medicamentos",
+    "description": "Tomar vitaminas diarias",
+    "date_time": "21/01/2026 08:00",
+    "date": "2026-01-21",
+    "time": "08:00",
+    "priority": "alta",
+    "recurrence": "Diario",
+    "active": true,
+    "completed": false,
+    "sound": true,
+    "popup": true,
+    "created_at": "2026-01-21 20:35:25"
+  }
+]

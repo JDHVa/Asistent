@@ -395,14 +395,14 @@ class MainWindow(QMainWindow):
     
     # Funciones para mover ventana sin bordes
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.y() < 50:
-            self.drag_pos = event.globalPos()
+        if event.button() == Qt.LeftButton and event.position().y() < 50:
+            self.drag_pos = event.globalPosition().toPoint()
             event.accept()
     
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.LeftButton and hasattr(self, 'drag_pos'):
-            self.move(self.pos() + event.globalPos() - self.drag_pos)
-            self.drag_pos = event.globalPos()
+            self.move(self.pos() + event.globalPosition().toPoint() - self  .drag_pos)
+            self.drag_pos = event.globalPosition().toPoint()
             event.accept()
     
     def closeEvent(self, event):

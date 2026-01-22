@@ -161,12 +161,15 @@ class ChatPanel(QWidget):
         self.conversation_history = []
         self.current_conversation = []
         self.thinking = False
-        
+            
         # Usar gestores centralizados
+        from assistant_managers import gemini_manager, voice_manager
         self.gemini_manager = gemini_manager
         self.voice_manager = voice_manager
-        self.voice_enabled = self.voice_manager.available
-        
+            
+        # Verificar disponibilidad de voz (usando los nuevos atributos)
+        self.voice_enabled = self.voice_manager.tts_available  # <-- CAMBIO AQUÍ
+            
         self.setup_ui()
         self.load_conversation_history()
         self.start_new_conversation()
@@ -217,7 +220,6 @@ class ChatPanel(QWidget):
         self.model_combo = QComboBox()
         model_options = ["Gemini Flash", "Gemini Pro"]
         
-        # Si Gemini no está disponible, mostrar opción simulada
         if not self.gemini_manager.model:
             model_options.append("Modo Simulado")
             self.model_combo.addItems(model_options)
@@ -226,8 +228,8 @@ class ChatPanel(QWidget):
             self.model_combo.addItems(model_options)
             self.model_combo.setCurrentIndex(0)
         
-        # Checkbox para voz (solo si está disponible)
-        if self.voice_manager.available:
+        # Checkbox para voz (solo si TTS está disponible)
+        if self.voice_manager.tts_available:  # <-- CAMBIO AQUÍ
             self.voice_checkbox = QCheckBox("🔊 Voz")
             self.voice_checkbox.setChecked(self.voice_enabled)
             self.voice_checkbox.setStyleSheet("color: #9aa0a6;")
@@ -262,7 +264,7 @@ class ChatPanel(QWidget):
         layout.addWidget(save_btn)
         
         return toolbar
-    
+
     def toggle_voice(self, state):
         """Activar/desactivar voz"""
         self.voice_enabled = (state == Qt.Checked)
@@ -385,7 +387,7 @@ class ChatPanel(QWidget):
             actions_layout.addWidget(btn)
         
         # Botón de voz (solo si está disponible)
-        if self.voice_manager.available:
+        if self.voice_manager.microphone_available:  # <-- CAMBIO AQUÍ
             self.voice_btn = QPushButton("🎤")
             self.voice_btn.setFixedSize(30, 30)
             self.voice_btn.setToolTip("Hablar mensaje (mantén presionado)")
@@ -394,10 +396,10 @@ class ChatPanel(QWidget):
             self.voice_btn.released.connect(self.stop_voice_recognition)
             actions_layout.addWidget(self.voice_btn)
         else:
-            # Mostrar botón deshabilitado si no hay voz
+            # Mostrar botón deshabilitado si no hay micrófono
             self.voice_btn = QPushButton("🎤")
             self.voice_btn.setFixedSize(30, 30)
-            self.voice_btn.setToolTip("Voz no disponible (instala dependencias)")
+            self.voice_btn.setToolTip("Micrófono no disponible")
             self.voice_btn.setEnabled(False)
             self.voice_btn.setStyleSheet("opacity: 0.5;")
             actions_layout.addWidget(self.voice_btn)
@@ -512,7 +514,7 @@ class ChatPanel(QWidget):
             system_prompt = """Eres un asistente virtual personal útil y amigable. 
             Responde en español de manera clara y concisa. 
             Si el usuario pregunta sobre programación, tareas, recordatorios o cualquier otra cosa, 
-            proporciona respuestas útiles y prácticas."""
+            proporciona respuestas útiles y prácticas y lo mas importante, responde brevemente."""
             
             # Obtener respuesta de Gemini
             response = self.gemini_manager.send_message(message, system_prompt)
@@ -529,7 +531,7 @@ class ChatPanel(QWidget):
             
             # Reproducir voz si está habilitado
             if self.voice_enabled and self.voice_manager and self.voice_manager.tts_engine:
-                self.voice_manager.speak_text(response)
+                self.voice_manager.speak(response)
                 
         except Exception as e:
             self.hide_thinking_indicator()
@@ -562,7 +564,7 @@ class ChatPanel(QWidget):
         
         # Reproducir voz si está habilitado
         if self.voice_enabled and self.voice_manager and self.voice_manager.tts_engine:
-            self.voice_manager.speak_text(response)
+            self.voice_manager.speak(response)
     
     def add_message(self, text, is_user=True):
         """Agregar mensaje al chat"""
@@ -675,8 +677,9 @@ class ChatPanel(QWidget):
     def process_voice_input(self):
         """Procesar entrada de voz en segundo plano"""
         try:
-            # Reconocer voz
-            recognized_text = self.voice_manager.recognize_speech()
+            # Reconocer voz - CAMBIA ESTA LÍNEA
+            # recognized_text = self.voice_manager.recognize_speech()  # ← VIEJO
+            recognized_text = self.voice_manager.listen()  # ← NUEVO
             
             # Actualizar interfaz en el hilo principal
             if recognized_text and not recognized_text.startswith("❌") and not recognized_text.startswith("⏱️"):
@@ -690,7 +693,7 @@ class ChatPanel(QWidget):
             error_msg = f"Error en reconocimiento de voz: {str(e)}"
             print(error_msg)
             QTimer.singleShot(0, lambda: self.add_message(f"❌ {error_msg}", is_user=False))
-    
+
     def load_conversation_history(self):
         """Cargar historial de conversaciones"""
         # Por ahora, datos de ejemplo

@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QAction, QActionGroup, QStandardItem, QStandardItemModel,
     QLinearGradient, QRadialGradient, QConicalGradient
 )
+from export_data import export_tasks, export_events, export_reminders
 import json
 from datetime import datetime, timedelta
 

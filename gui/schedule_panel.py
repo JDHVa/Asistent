@@ -29,7 +29,7 @@ from PySide6.QtGui import (
 )
 import json
 from datetime import datetime, timedelta
-
+from export_data import export_tasks, export_events, export_reminders
 class EventWidget(QWidget):
     """Widget para mostrar un evento en la lista"""
     

@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "title": "Reunión de equipo",
+    "description": "Reunión semanal de coordinación",
+    "date": "2026-01-21",
+    "start_time": "10:00",
+    "end_time": "11:00",
+    "location": "Sala de conferencias A",
+    "color": "#4285f4",
+    "recurrence": "Semanal",
+    "created_at": "2026-01-21 20:35:25"
+  }
+]
