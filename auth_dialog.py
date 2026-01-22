@@ -12,7 +12,8 @@ from PySide6.QtGui import QImage, QPixmap, QFont, QColor, QIcon
 import cv2
 import numpy as np
 import logging
-
+# Agrega esto con las otras importaciones al inicio
+from datetime import datetime  # <- ESTA LÍNEA
 # Configurar logger
 logger = logging.getLogger(__name__)
 
@@ -30,13 +31,13 @@ class AuthDialog(QDialog):
         self.capture = None
         self.auth_attempts = 0
         self.MAX_ATTEMPTS = 5
-        
+
         # Estado de autenticación
         self.auth_start_time = None
         self.last_detected_name = None
-        self.last_confidence = 0.0
         self.consecutive_matches = 0
         self.REQUIRED_MATCHES = 3  # Necesita 3 detecciones consecutivas
+        self.face_detected = False  # Necesita 3 detecciones consecutivas
         
         self.setup_ui()
         self.setup_camera()

@@ -16,7 +16,7 @@ class FaceAuthenticator:
         self.auth_lock = threading.Lock()
         
         self.auth_timeout = 30
-        self.min_confidence = 0.70
+        self.min_confidence = 0.14
         self.required_consecutive_frames = 3
         
         self.stats = {

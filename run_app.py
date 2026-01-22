@@ -11,6 +11,7 @@ import os
 from PySide6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
+from auth_dialog_simple import SimpleAuthDialog as AuthDialog
 
 # Añadir directorios al path CORRECTAMENTE
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,8 +33,8 @@ except ImportError as e:
     FACE_AUTH_AVAILABLE = False
     # Intentar desde intento1
     try:
-        from intento1.face_auth import FaceAuthenticator, run_authentication_flow
-        from intento1.face_system import FaceSystem
+        from face_auth import FaceAuthenticator, run_authentication_flow
+        from face_system import FaceSystem
         FACE_AUTH_AVAILABLE = True
         print("✅ Módulos de reconocimiento facial cargados desde intento1/")
     except ImportError as e2:
@@ -74,7 +75,7 @@ except ImportError as e:
     print(f"⚠️ No se pudo cargar auth_dialog: {e}")
     # Intentar desde intento1
     try:
-        from intento1.auth_dialog import AuthDialog
+        from auth_dialog import AuthDialog
         AUTH_DIALOG_AVAILABLE = True
         print("✅ Diálogo de autenticación cargado desde intento1/")
     except ImportError as e2:

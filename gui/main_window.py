@@ -218,9 +218,8 @@ class TitleBar(QFrame):
             self.maximize_btn.setText("❐")
 
 class MainWindow(QMainWindow):
-    """Ventana principal de la aplicación con asistente global"""
-    
-    def __init__(self):
+
+    def __init__(self, user_id=None, username=None):
         super().__init__()
         
         print("🚀 Iniciando Asistente Personal...")
@@ -230,34 +229,54 @@ class MainWindow(QMainWindow):
             self.user_manager = get_user_manager()
             self.db = get_database()
             
-            # Auto-login
-            current_user_id = self.user_manager.auto_login()
-            print(f"✅ Auto-login completado. Usuario: {current_user_id}")
-            
-            # Obtener datos del usuario actual
-            self.user_data = get_current_user_info() or {}
-            self.user_id = current_user_id
+            # Si se proporcionó user_id, usarlo
+            if user_id:
+                self.user_id = user_id
+                
+                # Si se proporcionó username, usarlo; de lo contrario generar uno
+                if username:
+                    self.username = username
+                else:
+                    # Extraer nombre del user_id
+                    self.username = user_id.replace('user_', '').replace('_', ' ').title()
+                
+                # Crear user_data
+                self.user_data = {
+                    "name": self.username,
+                    "user_id": user_id
+                }
+                
+                print(f"✅ Usando usuario proporcionado: {self.username} (ID: {self.user_id})")
+            else:
+                # Auto-login (comportamiento original)
+                self.user_id = self.user_manager.auto_login()
+                self.user_data = get_current_user_info() or {}
+                self.username = self.user_data.get('name', 'Usuario')
         else:
-            # Modo sin base de datos (compatibilidad)
-            self.user_data = {"name": "Invitado", "user_id": "guest_0000"}
-            self.user_id = "guest_0000"
-            print("⚠️ Modo sin base de datos - Usando usuario invitado")
+            # Modo sin base de datos
+            if user_id:
+                self.user_id = user_id
+                self.username = username if username else user_id.replace('user_', '').replace('_', ' ').title()
+            else:
+                self.user_id = "guest_0000"
+                self.username = "Invitado"
+            
+            self.user_data = {"name": self.username, "user_id": self.user_id}
+            print(f"⚠️ Modo sin base de datos - Usando: {self.username}")
         
-        print(f"🔧 Iniciando para usuario: {self.user_data.get('name', 'Invitado')} (ID: {self.user_id})")
+        print(f"🔧 Iniciando para usuario: {self.username} (ID: {self.user_id})")
         
-        # Inicializar asistente global
+        # Inicializar asistente global CON EL NOMBRE
         if ASSISTANT_AVAILABLE:
-            self.global_assistant = get_global_assistant()
+            from global_assistant import get_global_assistant
+            self.global_assistant = get_global_assistant(self.username)  # ← Pasar nombre aquí
             if self.global_assistant:
                 self.setup_assistant_callbacks()
                 self.setup_assistant_connections()
-                print("✅ Asistente global inicializado")
+                print(f"✅ Asistente global inicializado para: {self.username}")
             else:
                 print("⚠️ Asistente global no disponible")
                 self.global_assistant = None
-        else:
-            print("⚠️ Asistente global no disponible (no importado)")
-            self.global_assistant = None
         
         self.setup_window()
         self.setup_ui()
@@ -269,14 +288,24 @@ class MainWindow(QMainWindow):
         if not self.global_assistant:
             return
         
+        # Obtener nombre del usuario actual
+        user_name = self.user_data.get('name', 'Usuario')
+        
         callbacks = {
             'get_current_panel': self.get_current_panel,
             'get_tasks': self.get_current_tasks,
             'get_events': self.get_current_events,
-            'get_reminders': self.get_current_reminders
+            'get_reminders': self.get_current_reminders,
+            'user_name': user_name  # ← Añadir esto si GlobalDataManager lo soporta
         }
         
         self.global_assistant.register_callbacks(callbacks)
+        
+        # También puedes actualizar el nombre directamente
+        if hasattr(self.global_assistant, 'user_name'):
+            self.global_assistant.user_name = user_name
+        if hasattr(self.global_assistant, 'gemini') and hasattr(self.global_assistant.gemini, 'user_name'):
+            self.global_assistant.gemini.user_name = user_name
 
     def setup_assistant_connections(self):
         """Conectar señales del asistente global"""

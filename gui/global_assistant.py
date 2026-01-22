@@ -86,10 +86,11 @@ class GlobalDataManager:
 class GlobalGeminiAI:
     """IA para el asistente global"""
     
-    def __init__(self, data_manager):
+    def __init__(self, data_manager, user_name="Usuario"):  # ← Añadir parámetro con valor por defecto
         self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyAm9tYSXoKQfqIBGb_5bWJXcu6r0-Oridk")
         self.model = None
         self.data_manager = data_manager
+        self.user_name = user_name  # ← Guardar nombre del usuario
         self.initialize()
     
     def initialize(self):
@@ -104,21 +105,21 @@ class GlobalGeminiAI:
             return False
     
     def generate_response(self, user_query):
-        """Generar respuesta con contexto global"""
+        """Generar respuesta con contexto global - MODIFICADO para usar nombre"""
         if not self.model:
-            return "Lo siento, no puedo conectarme con la IA en este momento."
+            return f"Lo siento {self.user_name}, no puedo conectarme con la IA en este momento."
         
         try:
             # Obtener contexto global
             context_data = self.data_manager.get_context_data()
             
             # Formatear contexto para el prompt
-            context_text = f"""CONTEXTO DEL USUARIO:
-Hora actual: {context_data['current_time']['time']}
-Fecha: {context_data['current_time']['date']} ({context_data['current_time']['day_name']})
-Panel actual: {context_data['current_panel']}
+            context_text = f"""CONTEXTO DE {self.user_name.upper()}:
+                Hora actual: {context_data['current_time']['time']}
+                Fecha: {context_data['current_time']['date']} ({context_data['current_time']['day_name']})
+                Panel actual: {context_data['current_panel']}
 
-"""
+            """
             
             # Añadir información de tareas si existe
             if 'pending_tasks' in context_data:
@@ -138,25 +139,34 @@ Panel actual: {context_data['current_panel']}
                 for i, reminder in enumerate(context_data['urgent_reminders'], 1):
                     context_text += f"{i}. {reminder.get('title', 'Sin título')}\n"
             
-            # Crear prompt
-            system_prompt = f"""Eres "Asistente", un asistente virtual personal que está integrado en una aplicación de gestión.
-            
-{context_text}
+            # Crear prompt PERSONALIZADO
+            system_prompt = f"""Eres "Asistente", un asistente virtual personal que está integrado en una aplicación de gestión para {self.user_name}.
 
-INSTRUCCIONES:
-1. Eres útil, amigable y hablas en español de manera natural
-2. Usa el contexto para responder preguntas sobre tareas, eventos y recordatorios
-3. Sé conciso pero informativo
-4. Si no hay información en el contexto, di que no hay nada programado
-5. Siempre responde en español y en un tono natural como si estuvieras hablando
-6. IMPORTANTE: El usuario te activa diciendo "asistente" seguido de una pregunta
+            {context_text}
 
-FORMATO DE RESPUESTA:
-- Respuesta hablada natural
-- Incluye información relevante del contexto cuando sea apropiado
-- Sé breve y directo"""
+            INSTRUCCIONES IMPORTANTES:
+            1. Eres útil, amigable y hablas en español de manera natural
+            2. SIEMPRE te refieres al usuario por su nombre: {self.user_name}
+            3. Ejemplos de cómo dirigirte:
+            - "Claro, {self.user_name}"
+            - "Sí, {self.user_name}, te explico..."
+            - "{self.user_name}, según lo que veo..."
+            - "Por supuesto, {self.user_name}"
+            - "{self.user_name}, tengo esa información para ti"
+            4. Usa el contexto para responder preguntas sobre tareas, eventos y recordatorios
+            5. Sé conciso pero informativo
+            6. Si no hay información en el contexto, di que no hay nada programado
+            7. Siempre responde en español y en un tono natural como si estuvieras hablando
+            8. El usuario te activa diciendo "asistente" seguido de una pregunta
+            9. NUNCA olvides usar el nombre del usuario ({self.user_name}) en tus respuestas
+
+            FORMATO DE RESPUESTA:
+            - Respuesta hablada natural
+            - Incluye información relevante del contexto cuando sea apropiado
+            - Usa el nombre {self.user_name} al menos una vez en cada respuesta
+            - Sé breve y directo"""
             
-            full_prompt = f"{system_prompt}\n\nUsuario: {user_query}\n\nAsistente:"
+            full_prompt = f"{system_prompt}\n\n{self.user_name}: {user_query}\n\nAsistente:"
             
             response = self.model.generate_content(
                 full_prompt,
@@ -171,7 +181,7 @@ FORMATO DE RESPUESTA:
             return response.text
             
         except Exception as e:
-            error_msg = f"Lo siento, hubo un error al procesar tu solicitud."
+            error_msg = f"Lo siento {self.user_name}, hubo un error al procesar tu solicitud."
             print(f"❌ Error Gemini global: {e}")
             return error_msg
 
@@ -184,12 +194,15 @@ class GlobalVoiceAssistant(QObject):
     status_changed = Signal(str)        # Cambio de estado
     error_occurred = Signal(str)        # Error
     
-    def __init__(self):
+    def __init__(self, user_name="Usuario"):  # ← Añadir parámetro con valor por defecto
         super().__init__()
+        
+        # Guardar nombre del usuario
+        self.user_name = user_name
         
         # Inicializar componentes
         self.data_manager = GlobalDataManager()
-        self.gemini = GlobalGeminiAI(self.data_manager)
+        self.gemini = GlobalGeminiAI(self.data_manager, user_name)  # ← Pasar el nombre
         
         # Configurar TTS
         self.tts_engine = None
@@ -215,7 +228,7 @@ class GlobalVoiceAssistant(QObject):
         self.running = True
         self.start_listening_thread()
         
-        print("✅ Asistente global inicializado")
+        print(f"✅ Asistente global inicializado para: {user_name}")
     
     def setup_tts(self):
         """Configurar texto a voz"""
@@ -359,9 +372,13 @@ class GlobalVoiceAssistant(QObject):
 # Instancia global única
 global_assistant = None
 
-def get_global_assistant():
+def get_global_assistant(user_name="Usuario"):  # ← Añadir parámetro
     """Obtener la instancia global del asistente (singleton)"""
     global global_assistant
     if global_assistant is None:
-        global_assistant = GlobalVoiceAssistant()
+        global_assistant = GlobalVoiceAssistant(user_name)  # ← Pasar el nombre
+    else:
+        # Si ya existe, podemos actualizar el nombre si es diferente
+        global_assistant.user_name = user_name
+        global_assistant.gemini.user_name = user_name
     return global_assistant
