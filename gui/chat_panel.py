@@ -37,6 +37,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import threading
 from assistant_managers import gemini_manager, voice_manager
+from database_manager import get_database
 
 # Intento de importar bibliotecas de voz con manejo de errores
 try:
@@ -156,8 +157,15 @@ class ChatPanel(QWidget):
     conversation_cleared = Signal()
     
 class ChatPanel(QWidget):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, user_id=None, parent=None):
+        super().__init__(parent)
+        self.user_id = user_id
+        self.db = get_database()  # ¡IMPORTANTE: Inicializar ANTES de usarlo!
+        
+        # Establecer usuario actual si se proporciona
+        if user_id:
+            self.db.set_current_user(user_id)
+        
         self.conversation_history = []
         self.current_conversation = []
         self.thinking = False
@@ -167,11 +175,11 @@ class ChatPanel(QWidget):
         self.gemini_manager = gemini_manager
         self.voice_manager = voice_manager
             
-        # Verificar disponibilidad de voz (usando los nuevos atributos)
-        self.voice_enabled = self.voice_manager.tts_available  # <-- CAMBIO AQUÍ
+        # Verificar disponibilidad de voz
+        self.voice_enabled = self.voice_manager.tts_available
             
         self.setup_ui()
-        self.load_conversation_history()
+        self.load_conversation_history()  # Ahora self.db ya está definido
         self.start_new_conversation()
         
     def setup_ui(self):
@@ -695,15 +703,14 @@ class ChatPanel(QWidget):
             QTimer.singleShot(0, lambda: self.add_message(f"❌ {error_msg}", is_user=False))
 
     def load_conversation_history(self):
-        """Cargar historial de conversaciones"""
-        # Por ahora, datos de ejemplo
-        self.conversation_history = [
-            {"id": 1, "title": "Planificación de proyecto", "date": "2024-02-15", "preview": "Discusión sobre el nuevo proyecto..."},
-            {"id": 2, "title": "Ayuda con código Python", "date": "2024-02-14", "preview": "Problemas con funciones asíncronas..."},
-            {"id": 3, "title": "Revisión de documentos", "date": "2024-02-13", "preview": "Revisión de contrato y términos..."},
-        ]
-        
-        self.update_history_list()
+        """Cargar historial de conversación desde la base de datos"""
+        try:
+            if self.user_id:
+                history = self.db.get_conversation_history()
+                for message in history:
+                    self.update_history_list()
+        except Exception as e:
+            print(f"❌ Error cargando historial de chat: {e}")
     
     def update_history_list(self):
         """Actualizar lista de historial"""

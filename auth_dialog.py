@@ -1,19 +1,22 @@
 """
-Diálogo de autenticación facial - INTEGRADO CON SISTEMA REAL
-"""
+Diálogo de autenticación facial - INTEGRADO CON SISTEMA REAL """
+import sys
+import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QFrame, QProgressBar, QMessageBox
+    QPushButton, QFrame, QProgressBar, QMessageBox, QWidget,
+    QApplication  # Añadir esta línea
 )
 from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtGui import QImage, QPixmap, QFont, QColor, QIcon
 import cv2
 import numpy as np
-import os
-from datetime import datetime
+import logging
+
+# Configurar logger
+logger = logging.getLogger(__name__)
 
 class AuthDialog(QDialog):
-    """Diálogo para autenticación facial con integración mejorada."""
     
     # Señales mejoradas
     auth_successful = Signal(dict)  # Emite datos completos del usuario

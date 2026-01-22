@@ -27,6 +27,8 @@ from PySide6.QtGui import (
 from export_data import export_tasks, export_events, export_reminders
 import json
 from datetime import datetime, timedelta
+from database_manager import get_database
+
 
 class ReminderWidget(QWidget):
     """Widget para mostrar un recordatorio individual"""
@@ -216,13 +218,23 @@ class ReminderWidget(QWidget):
 class RemindersPanel(QWidget):
     """Panel completo de recordatorios con notificaciones"""
     
-    def __init__(self):
-        super().__init__()
+class RemindersPanel(QWidget):
+    """Panel completo de recordatorios con notificaciones"""
+    
+    def __init__(self, user_id=None, parent=None):
+        super().__init__(parent)
+        self.user_id = user_id
+        self.db = get_database()
+        
+        # Establecer usuario actual si se proporciona
+        if user_id:
+            self.db.set_current_user(user_id)
+        
         self.reminders = []
         self.next_id = 1
         
         self.setup_ui()
-        self.load_sample_reminders()
+        self.load_reminders()  # Cargar desde base de datos
         
         # Timer para verificar recordatorios
         self.check_timer = QTimer()
@@ -1053,3 +1065,49 @@ class RemindersPanel(QWidget):
         
         self.update_stats()
         self.update_next_reminder()
+
+    def load_reminders(self):
+        """Cargar recordatorios desde la base de datos"""
+        try:
+            if self.user_id:
+                self.reminders = self.db.get_reminders()
+                self.display_reminders()  # Llamar a display_reminders después de cargar
+                self.update_stats()
+                self.update_next_reminder()
+            else:
+                self.load_sample_reminders()
+        except Exception as e:
+            print(f"❌ Error cargando recordatorios desde BD: {e}")
+            self.reminders = []
+            self.load_sample_reminders()
+
+    def display_reminders(self):
+        """Mostrar recordatorios en las listas"""
+        # Limpiar todas las listas primero
+        self.active_list.clear()
+        self.all_reminders_list.clear()
+        self.completed_list.clear()
+        
+        for reminder in self.reminders:
+            # Crear widget de recordatorio
+            reminder_widget = ReminderWidget(reminder)
+            reminder_widget.reminder_updated.connect(self.update_reminder)
+            reminder_widget.reminder_deleted.connect(self.delete_reminder)
+            
+            # Agregar a la lista principal
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 80))
+            self.all_reminders_list.addItem(list_item)
+            self.all_reminders_list.setItemWidget(list_item, reminder_widget)
+            
+            # Agregar a lista activa si está activo y no completado
+            if reminder.get('active', True) and not reminder.get('completed', False):
+                active_item = QListWidgetItem()
+                active_item.setSizeHint(QSize(0, 80))
+                self.active_list.addItem(active_item)
+                self.active_list.setItemWidget(active_item, reminder_widget)
+            
+            # Agregar a lista completados si está completado
+            if reminder.get('completed', False):
+                completed_item = QListWidgetItem(reminder.get('title', 'Sin título'))
+                self.completed_list.addItem(completed_item)

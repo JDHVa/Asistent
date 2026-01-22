@@ -5,16 +5,44 @@ Incluye 4 pestañas: Chat, Tareas, Horario, Recordatorios.
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, 
     QHBoxLayout, QLabel, QFrame, QPushButton, QSystemTrayIcon,
-    QMenu, QApplication, QStatusBar, QToolBar, QMessageBox
+    QMenu, QApplication, QStatusBar, QToolBar, QMessageBox,
+    QInputDialog
 )
 from PySide6.QtCore import Qt, QSize, Signal, QTimer
-from PySide6.QtGui import QIcon, QAction, QFont, QPalette, QColor
+from PySide6.QtGui import QIcon, QFont, QPalette, QColor, QAction
 import os
 import sys
+import hashlib
 
 # Añadir directorio actual al path para imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
+
+# Importar sistema de base de datos y usuarios
+try:
+    from database_manager import get_database
+    from user_manager import get_user_manager, get_current_user_info
+    DATABASE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ No se pudo importar sistema de base de datos: {e}")
+    DATABASE_AVAILABLE = False
+    # Funciones dummy para cuando no hay base de datos
+    def get_database():
+        return None
+    def get_user_manager():
+        return None
+    def get_current_user_info():
+        return {"name": "Invitado", "user_id": "guest_0000"}
+
+# Importar el asistente global
+try:
+    from global_assistant import get_global_assistant
+    ASSISTANT_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ No se pudo importar asistente global: {e}")
+    ASSISTANT_AVAILABLE = False
+    def get_global_assistant():
+        return None
 
 # Importar los paneles (con manejo de errores)
 try:
@@ -29,10 +57,34 @@ try:
             return ""
     
     # Intentar importar los paneles
-    from chat_panel import ChatPanel
-    from tasks_panel import TasksPanel
-    from schedule_panel import SchedulePanel
-    from reminders_panel import RemindersPanel
+    try:
+        from chat_panel import ChatPanel
+        CHAT_PANEL_AVAILABLE = True
+    except ImportError:
+        print("⚠️ ChatPanel no disponible")
+        CHAT_PANEL_AVAILABLE = False
+        
+    try:
+        from tasks_panel import TasksPanel
+        TASKS_PANEL_AVAILABLE = True
+    except ImportError:
+        print("⚠️ TasksPanel no disponible")
+        TASKS_PANEL_AVAILABLE = False
+        
+    try:
+        from schedule_panel import SchedulePanel
+        SCHEDULE_PANEL_AVAILABLE = True
+    except ImportError:
+        print("⚠️ SchedulePanel no disponible")
+        SCHEDULE_PANEL_AVAILABLE = False
+        
+    try:
+        from reminders_panel import RemindersPanel
+        REMINDERS_PANEL_AVAILABLE = True
+    except ImportError:
+        print("⚠️ RemindersPanel no disponible")
+        REMINDERS_PANEL_AVAILABLE = False
+    
     PANELS_AVAILABLE = True
     
 except ImportError as e:
@@ -41,15 +93,40 @@ except ImportError as e:
     
     # Crear placeholders si fallan los imports
     class ChatPanel(QWidget):
-        def __init__(self, parent=None):
+        def __init__(self, user_id=None, parent=None):
             super().__init__(parent)
-            label = QLabel("Panel de Chat (Error de carga)")
+            label = QLabel("Panel de Chat (No disponible)")
             label.setAlignment(Qt.AlignCenter)
             layout = QVBoxLayout()
             layout.addWidget(label)
             self.setLayout(layout)
     
-    TasksPanel = SchedulePanel = RemindersPanel = ChatPanel
+    class TasksPanel(QWidget):
+        def __init__(self, user_id=None, parent=None):
+            super().__init__(parent)
+            label = QLabel("Panel de Tareas (No disponible)")
+            label.setAlignment(Qt.AlignCenter)
+            layout = QVBoxLayout()
+            layout.addWidget(label)
+            self.setLayout(layout)
+    
+    class SchedulePanel(QWidget):
+        def __init__(self, user_id=None, parent=None):
+            super().__init__(parent)
+            label = QLabel("Panel de Horario (No disponible)")
+            label.setAlignment(Qt.AlignCenter)
+            layout = QVBoxLayout()
+            layout.addWidget(label)
+            self.setLayout(layout)
+    
+    class RemindersPanel(QWidget):
+        def __init__(self, user_id=None, parent=None):
+            super().__init__(parent)
+            label = QLabel("Panel de Recordatorios (No disponible)")
+            label.setAlignment(Qt.AlignCenter)
+            layout = QVBoxLayout()
+            layout.addWidget(label)
+            self.setLayout(layout)
 
 class TitleBar(QFrame):
     """Barra de título personalizada CORREGIDA"""
@@ -141,17 +218,140 @@ class TitleBar(QFrame):
             self.maximize_btn.setText("❐")
 
 class MainWindow(QMainWindow):
-    """Ventana principal de la aplicación"""
+    """Ventana principal de la aplicación con asistente global"""
     
-    def __init__(self, user_data=None):
+    def __init__(self):
         super().__init__()
-        self.user_data = user_data or {}
-        print(f"🔧 Creando pestañas para: {self.user_data.get('name', 'Invitado')}")
+        
+        print("🚀 Iniciando Asistente Personal...")
+        
+        # Inicializar gestor de usuarios y base de datos
+        if DATABASE_AVAILABLE:
+            self.user_manager = get_user_manager()
+            self.db = get_database()
+            
+            # Auto-login
+            current_user_id = self.user_manager.auto_login()
+            print(f"✅ Auto-login completado. Usuario: {current_user_id}")
+            
+            # Obtener datos del usuario actual
+            self.user_data = get_current_user_info() or {}
+            self.user_id = current_user_id
+        else:
+            # Modo sin base de datos (compatibilidad)
+            self.user_data = {"name": "Invitado", "user_id": "guest_0000"}
+            self.user_id = "guest_0000"
+            print("⚠️ Modo sin base de datos - Usando usuario invitado")
+        
+        print(f"🔧 Iniciando para usuario: {self.user_data.get('name', 'Invitado')} (ID: {self.user_id})")
+        
+        # Inicializar asistente global
+        if ASSISTANT_AVAILABLE:
+            self.global_assistant = get_global_assistant()
+            if self.global_assistant:
+                self.setup_assistant_callbacks()
+                self.setup_assistant_connections()
+                print("✅ Asistente global inicializado")
+            else:
+                print("⚠️ Asistente global no disponible")
+                self.global_assistant = None
+        else:
+            print("⚠️ Asistente global no disponible (no importado)")
+            self.global_assistant = None
         
         self.setup_window()
         self.setup_ui()
         self.setup_tray_icon()
-        self.apply_styles()  # ¡Este método ahora existe!
+        self.apply_styles()
+        
+    def setup_assistant_callbacks(self):
+        """Configurar callbacks para que el asistente acceda a los datos"""
+        if not self.global_assistant:
+            return
+        
+        callbacks = {
+            'get_current_panel': self.get_current_panel,
+            'get_tasks': self.get_current_tasks,
+            'get_events': self.get_current_events,
+            'get_reminders': self.get_current_reminders
+        }
+        
+        self.global_assistant.register_callbacks(callbacks)
+
+    def setup_assistant_connections(self):
+        """Conectar señales del asistente global"""
+        if not self.global_assistant:
+            return
+        
+        self.global_assistant.command_received.connect(self.on_assistant_command)
+        self.global_assistant.response_ready.connect(self.on_assistant_response)
+        self.global_assistant.error_occurred.connect(self.on_assistant_error)
+
+    def get_current_panel(self):
+        """Obtener el panel actual"""
+        tab_names = ["Chat", "Tareas", "Horario", "Recordatorios"]
+        if hasattr(self, 'tab_widget'):
+            current_index = self.tab_widget.currentIndex()
+            if 0 <= current_index < len(tab_names):
+                return tab_names[current_index]
+        return "Desconocido"
+    
+    def get_current_tasks(self):
+        """Obtener tareas del panel de tareas"""
+        try:
+            if hasattr(self, 'tasks_panel'):
+                if hasattr(self.tasks_panel, 'tasks'):
+                    return self.tasks_panel.tasks
+        except Exception as e:
+            print(f"⚠️ Error obteniendo tareas: {e}")
+        return []
+    
+    def get_current_events(self):
+        """Obtener eventos del panel de horario"""
+        try:
+            if hasattr(self, 'schedule_panel'):
+                if hasattr(self.schedule_panel, 'events'):
+                    return self.schedule_panel.events
+        except Exception as e:
+            print(f"⚠️ Error obteniendo eventos: {e}")
+        return []
+    
+    def get_current_reminders(self):
+        """Obtener recordatorios del panel de recordatorios"""
+        try:
+            if hasattr(self, 'reminders_panel'):
+                if hasattr(self.reminders_panel, 'reminders'):
+                    return self.reminders_panel.reminders
+        except Exception as e:
+            print(f"⚠️ Error obteniendo recordatorios: {e}")
+        return []
+    
+    def on_assistant_command(self, command):
+        """Manejar comando recibido del asistente"""
+        print(f"🎤 Comando recibido: {command}")
+        # Mostrar notificación en la barra de estado
+        if hasattr(self, 'statusBar'):
+            self.statusBar().showMessage(f"🎤 {command[:50]}...", 3000)
+    
+    def on_assistant_response(self, response):
+        """Manejar respuesta del asistente"""
+        print(f"🤖 Respuesta: {response}")
+        # Mostrar notificación en la barra de estado
+        if hasattr(self, 'statusBar'):
+            self.statusBar().showMessage(f"🤖 {response[:50]}...", 5000)
+        
+        # Si estamos en el panel de chat, también mostrar ahí
+        if hasattr(self, 'chat_panel') and hasattr(self.chat_panel, 'add_message'):
+            if hasattr(self, 'tab_widget'):
+                current_tab = self.tab_widget.currentIndex()
+                if current_tab == 0:  # Panel de chat
+                    self.chat_panel.add_message("Asistente", response)
+    
+    def on_assistant_error(self, error):
+        """Manejar error del asistente"""
+        print(f"❌ Error del asistente: {error}")
+        if hasattr(self, 'statusBar'):
+            self.statusBar().showMessage(f"❌ {error}", 5000)
         
     def setup_window(self):
         """Configuración básica de la ventana"""
@@ -201,7 +401,36 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.content_widget, 1)  # 1 = factor de expansión
         
         # Barra de estado
-        self.setup_status_bar()  
+        self.setup_status_bar()
+        
+        # Estilo básico si no hay styles.py
+        if not STYLES_AVAILABLE:
+            central_widget.setStyleSheet("""
+                #CentralWidget {
+                    background-color: #202124;
+                }
+                #TitleBar {
+                    background-color: #2b2d30;
+                    border-bottom: 1px solid #3c4043;
+                }
+                #TitleLabel {
+                    color: #e8eaed;
+                    font-weight: bold;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #3c4043;
+                    background-color: #292a2d;
+                }
+                QTabBar::tab {
+                    background-color: #35363a;
+                    color: #9aa0a6;
+                    padding: 10px 20px;
+                }
+                QTabBar::tab:selected {
+                    background-color: #292a2d;
+                    color: #e8eaed;
+                }
+            """)
 
     def create_tabs(self):
         """Crear las pestañas principales"""
@@ -209,54 +438,58 @@ class MainWindow(QMainWindow):
         
         # Pestaña 1: Chat
         try:
-            # NO pasar gemini_manager si ChatPanel no lo acepta
-            self.chat_panel = ChatPanel()
-            self.tab_widget.addTab(self.chat_panel, "💬 Chat")
-            print("DEBUG: Pestaña Chat creada")
+            if CHAT_PANEL_AVAILABLE:
+                self.chat_panel = ChatPanel(user_id=self.user_id)
+                self.tab_widget.addTab(self.chat_panel, "💬 Chat")
+                print("DEBUG: Pestaña Chat creada")
+            else:
+                raise ImportError("ChatPanel no disponible")
         except Exception as e:
             print(f"ERROR creando ChatPanel: {e}")
-            error_widget = QLabel("Error cargando Chat")
+            error_widget = QLabel("Panel de Chat no disponible")
             error_widget.setAlignment(Qt.AlignCenter)
-            error_widget.setStyleSheet("color: red; font-size: 20px;")
             self.tab_widget.addTab(error_widget, "💬 Chat")
         
         # Pestaña 2: Tareas
         try:
-            # NO pasar user_data si TasksPanel no lo acepta
-            self.tasks_panel = TasksPanel()
-            self.tab_widget.addTab(self.tasks_panel, "✅ Tareas")
-            print("DEBUG: Pestaña Tareas creada")
+            if TASKS_PANEL_AVAILABLE:
+                self.tasks_panel = TasksPanel(user_id=self.user_id)
+                self.tab_widget.addTab(self.tasks_panel, "✅ Tareas")
+                print("DEBUG: Pestaña Tareas creada")
+            else:
+                raise ImportError("TasksPanel no disponible")
         except Exception as e:
             print(f"ERROR creando TasksPanel: {e}")
-            error_widget = QLabel("Error cargando Tareas")
+            error_widget = QLabel("Panel de Tareas no disponible")
             error_widget.setAlignment(Qt.AlignCenter)
-            error_widget.setStyleSheet("color: red; font-size: 20px;")
             self.tab_widget.addTab(error_widget, "✅ Tareas")
         
         # Pestaña 3: Horario
         try:
-            # NO pasar user_data si SchedulePanel no lo acepta
-            self.schedule_panel = SchedulePanel()
-            self.tab_widget.addTab(self.schedule_panel, "📅 Horario")
-            print("DEBUG: Pestaña Horario creada")
+            if SCHEDULE_PANEL_AVAILABLE:
+                self.schedule_panel = SchedulePanel(user_id=self.user_id)
+                self.tab_widget.addTab(self.schedule_panel, "📅 Horario")
+                print("DEBUG: Pestaña Horario creada")
+            else:
+                raise ImportError("SchedulePanel no disponible")
         except Exception as e:
             print(f"ERROR creando SchedulePanel: {e}")
-            error_widget = QLabel("Error cargando Horario")
+            error_widget = QLabel("Panel de Horario no disponible")
             error_widget.setAlignment(Qt.AlignCenter)
-            error_widget.setStyleSheet("color: red; font-size: 20px;")
             self.tab_widget.addTab(error_widget, "📅 Horario")
         
         # Pestaña 4: Recordatorios
         try:
-            # NO pasar user_data si RemindersPanel no lo acepta
-            self.reminders_panel = RemindersPanel()
-            self.tab_widget.addTab(self.reminders_panel, "⏰ Recordatorios")
-            print("DEBUG: Pestaña Recordatorios creada")
+            if REMINDERS_PANEL_AVAILABLE:
+                self.reminders_panel = RemindersPanel(user_id=self.user_id)
+                self.tab_widget.addTab(self.reminders_panel, "⏰ Recordatorios")
+                print("DEBUG: Pestaña Recordatorios creada")
+            else:
+                raise ImportError("RemindersPanel no disponible")
         except Exception as e:
             print(f"ERROR creando RemindersPanel: {e}")
-            error_widget = QLabel("Error cargando Recordatorios")
+            error_widget = QLabel("Panel de Recordatorios no disponible")
             error_widget.setAlignment(Qt.AlignCenter)
-            error_widget.setStyleSheet("color: red; font-size: 20px;")
             self.tab_widget.addTab(error_widget, "⏰ Recordatorios")
         
         # Conectar señal de cambio de pestaña
@@ -304,14 +537,21 @@ class MainWindow(QMainWindow):
     def setup_tray_icon(self):
         """Configurar el icono en la bandeja del sistema"""
         try:
+            # Intentar crear un icono simple
             self.tray_icon = QSystemTrayIcon(self)
             
-            # Intentar crear un icono
-            try:
-                # Usar un emoji como texto para el icono (solución temporal)
-                self.tray_icon.setToolTip("Asistente Personal")
-            except:
-                pass
+            # Crear un icono simple desde un emoji (solución temporal)
+            from PySide6.QtGui import QPixmap, QPainter, QColor
+            pixmap = QPixmap(32, 32)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setPen(QColor(255, 255, 255))
+            painter.setFont(QFont("Arial", 20))
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, "🤖")
+            painter.end()
+            
+            self.tray_icon.setIcon(QIcon(pixmap))
+            self.tray_icon.setToolTip("Asistente Personal")
             
             # Crear menú para el tray icon
             tray_menu = QMenu()
@@ -347,43 +587,6 @@ class MainWindow(QMainWindow):
         try:
             if STYLES_AVAILABLE:
                 self.setStyleSheet(get_stylesheet())
-            else:
-                # Estilos básicos si no hay styles.py
-                basic_styles = """
-                /* ===== VENTANA PRINCIPAL ===== */
-                QMainWindow {
-                    background-color: #202124;
-                }
-                
-                /* ===== BARRA DE TÍTULO PERSONALIZADA ===== */
-                #TitleBar {
-                    background-color: #2b2d30;
-                    border-bottom: 1px solid #3c4043;
-                }
-                
-                #TitleLabel {
-                    color: #e8eaed;
-                }
-                
-                /* ===== PESTAÑAS ===== */
-                QTabWidget::pane {
-                    border: 1px solid #3c4043;
-                    background-color: #292a2d;
-                }
-                
-                QTabBar::tab {
-                    background-color: #35363a;
-                    color: #9aa0a6;
-                    padding: 10px 20px;
-                }
-                
-                QTabBar::tab:selected {
-                    background-color: #292a2d;
-                    color: #e8eaed;
-                }
-                """
-                self.setStyleSheet(basic_styles)
-                
         except Exception as e:
             print(f"⚠️ Error aplicando estilos: {e}")
     
@@ -401,12 +604,16 @@ class MainWindow(QMainWindow):
     
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.LeftButton and hasattr(self, 'drag_pos'):
-            self.move(self.pos() + event.globalPosition().toPoint() - self  .drag_pos)
+            self.move(self.pos() + event.globalPosition().toPoint() - self.drag_pos)
             self.drag_pos = event.globalPosition().toPoint()
             event.accept()
     
     def closeEvent(self, event):
         """Manejador de cierre de ventana"""
+        # Detener el asistente global si existe
+        if hasattr(self, 'global_assistant') and self.global_assistant:
+            self.global_assistant.stop()
+        
         reply = QMessageBox.question(
             self, 'Salir',
             "¿Estás seguro de que quieres salir?",
@@ -423,13 +630,42 @@ class MainWindow(QMainWindow):
     
     def save_state(self):
         """Guardar estado de la aplicación antes de cerrar"""
-        # Aquí puedes guardar configuraciones, tamaño de ventana, etc.
-        pass
+        try:
+            # Guardar geometría de ventana
+            from PySide6.QtCore import QSettings
+            settings = QSettings("AsistentePersonal", "MainWindow")
+            settings.setValue("geometry", self.saveGeometry())
+            settings.setValue("windowState", self.saveState())
+            if hasattr(self, 'tab_widget'):
+                settings.setValue("currentTab", self.tab_widget.currentIndex())
+        except Exception as e:
+            print(f"⚠️ Error guardando estado: {e}")
 
 if __name__ == "__main__":
     # Para pruebas directas
     import sys
     app = QApplication(sys.argv)
+    
+    # Establecer paleta de colores oscura por defecto
+    app.setStyle("Fusion")
+    dark_palette = QPalette()
+    dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+    dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.white)
+    dark_palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
+    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.white)
+    dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.white)
+    dark_palette.setColor(QPalette.ColorRole.Text, Qt.white)
+    dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+    dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.white)
+    dark_palette.setColor(QPalette.ColorRole.BrightText, Qt.red)
+    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+    dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.black)
+    app.setPalette(dark_palette)
+    
+    # Iniciar ventana principal
     window = MainWindow()
     window.show()
+    
     sys.exit(app.exec())
