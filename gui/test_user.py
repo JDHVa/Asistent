@@ -1,45 +1,72 @@
-# test_database_spanish.py
-import sqlite3
+#!/usr/bin/env python3
+"""
+Script para inicializar/verificar la base de datos - VERSIÓN SIMPLIFICADA
+"""
+import sys
 import os
+import sqlite3
 
+# Añadir directorio actual al path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(current_dir, "..", "data", "database", "assistant.db")
+sys.path.append(current_dir)
 
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
-
-# Verificar restricciones de tareas
-cursor.execute("PRAGMA table_info(tasks)")
-columns = cursor.fetchall()
-print("📋 Columnas de la tabla 'tasks':")
-for col in columns:
-    if col[1] == 'priority':
-        print(f"  - {col[1]}: {col[2]} (restricción)")
-        # Verificar restricción CHECK
-        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'")
-        create_sql = cursor.fetchone()[0]
-        print(f"  - SQL: {create_sql[create_sql.find('CHECK'):create_sql.find(') DEFAULT')+1] if 'CHECK' in create_sql else 'No CHECK'}")
+def init_database():
+    """Inicializar y verificar la base de datos"""
+    try:
+        from database_manager import get_database
         
-# Probar insert con español
-test_data = {
-    'user_id': 'test_user',
-    'title': 'Tarea de prueba',
-    'description': 'Descripción',
-    'priority': 'alta',  # Español
-    'category': 'Trabajo',
-    'due_date': '2024-01-01',
-    'due_time': '12:00',
-    'completed': 0
-}
+        print("🔧 Inicializando base de datos...")
+        
+        # Forzar la creación de la base de datos
+        db = get_database()
+        
+        # Verificar conexión
+        conn = sqlite3.connect(db.db_path)
+        cursor = conn.cursor()
+        
+        # Listar tablas
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        
+        print("\n📊 Tablas en la base de datos:")
+        if tables:
+            for table in tables:
+                print(f"  ✅ {table[0]}")
+        else:
+            print("  ❌ No hay tablas en la base de datos")
+            return False
+        
+        # Crear usuario de prueba
+        from user_manager import get_user_manager
+        user_manager = get_user_manager()
+        
+        test_user_id = user_manager.create_or_get_user("test_user", "Usuario de Prueba")
+        
+        if test_user_id:
+            print(f"\n✅ Usuario de prueba creado: test_user")
+        
+        conn.close()
+        print("\n" + "="*60)
+        print("✅ Base de datos verificada correctamente")
+        print("="*60 + "\n")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error crítico inicializando base de datos: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-try:
-    cursor.execute('''
-        INSERT INTO tasks (user_id, title, description, priority, category, due_date, due_time, completed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', tuple(test_data.values()))
-    print("✅ Inserción con español funcionó!")
-    conn.commit()
-except Exception as e:
-    print(f"❌ Error: {e}")
-
-conn.close()
+if __name__ == "__main__":
+    # Limpiar base de datos anterior (si existe)
+    try:
+        if os.path.exists("data/asistente_personal.db"):
+            print("🗑️ Eliminando base de datos anterior...")
+            os.remove("data/asistente_personal.db")
+    except:
+        pass
+    
+    if init_database():
+        sys.exit(0)
+    else:
+        sys.exit(1)

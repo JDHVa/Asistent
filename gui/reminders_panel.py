@@ -79,29 +79,8 @@ class ReminderWidget(QWidget):
             recur_label.setStyleSheet("color: #34a853; font-size: 10px;")
             details_layout.addWidget(recur_label)
         
-        # Prioridad
-        priority = self.reminder_data.get('priority', 'medium')
-        priority_colors = {
-            'high': ('🔥 High', '#ea4335'),
-            'medium': ('⚠️ Medium', '#fbbc04'),
-            'low': ('📌 Low', '#34a853')
-        }
-        priority_text, priority_color = priority_colors.get(priority, ('⚠️ Medium', '#fbbc04'))
-        priority_label = QLabel(priority_text)
-        priority_label.setStyleSheet(f"""
-            QLabel {{
-                color: {priority_color};
-                font-size: 10px;
-                font-weight: bold;
-                padding: 2px 8px;
-                background-color: {priority_color}20;
-                border-radius: 10px;
-            }}
-        """)
-        
         details_layout.addWidget(time_label)
         details_layout.addStretch()
-        details_layout.addWidget(priority_label)
         
         # Descripción
         description = self.reminder_data.get('description', '')
@@ -217,9 +196,6 @@ class ReminderWidget(QWidget):
 class RemindersPanel(QWidget):
     """Panel completo de recordatorios con notificaciones"""
     
-class RemindersPanel(QWidget):
-    """Panel completo de recordatorios con notificaciones"""
-    
     def __init__(self, user_id=None, parent=None):
         super().__init__(parent)
         self.user_id = user_id
@@ -264,7 +240,6 @@ class RemindersPanel(QWidget):
         main_splitter.setSizes([350, 650])
         
         main_layout.addWidget(main_splitter, 1)
-
         
     def create_header(self):
         """Crear encabezado"""
@@ -384,13 +359,6 @@ class RemindersPanel(QWidget):
         # Configuración
         config_layout = QHBoxLayout()
         
-        # Prioridad
-        priority_col = QVBoxLayout()
-        priority_col.addWidget(QLabel("Priority:"))
-        self.reminder_priority = QComboBox()
-        self.reminder_priority.addItems(["High", "Medium", "Low"])
-        priority_col.addWidget(self.reminder_priority)
-        
         # Repetición
         recur_col = QVBoxLayout()
         recur_col.addWidget(QLabel("Repetir:"))
@@ -398,7 +366,6 @@ class RemindersPanel(QWidget):
         self.reminder_recurrence.addItems(["No repetir", "Diario", "Semanal", "Mensual", "Anual"])
         recur_col.addWidget(self.reminder_recurrence)
         
-        config_layout.addLayout(priority_col)
         config_layout.addLayout(recur_col)
         
         # Opciones adicionales
@@ -487,7 +454,7 @@ class RemindersPanel(QWidget):
         """
         
         inputs = [self.reminder_title, self.reminder_desc, self.reminder_date,
-                 self.reminder_time, self.reminder_priority, self.reminder_recurrence,
+                 self.reminder_time, self.reminder_recurrence,
                  self.check_interval]
         for inp in inputs:
             inp.setStyleSheet(input_style)
@@ -593,8 +560,7 @@ class RemindersPanel(QWidget):
         # Formatear recordatorios
         reminders_text = "Recordatorios activos:\n\n"
         for i, reminder in enumerate(active_reminders[:5], 1):
-            priority_icon = "🔥" if reminder['priority'] == 'alta' else "⚠️" if reminder['priority'] == 'media' else "📌"
-            reminders_text += f"{i}. {priority_icon} {reminder['title']} - {reminder['date_time']}\n"
+            reminders_text += f"{i}. {reminder['title']} - {reminder['date_time']}\n"
         
         prompt = f"""Analiza estos recordatorios y da recomendaciones:
 
@@ -716,6 +682,36 @@ class RemindersPanel(QWidget):
         layout.addWidget(info)
         
         return widget
+    def add_reminder_to_list(self, reminder_data):
+        """Agregar un recordatorio a las listas"""
+        reminder_widget = ReminderWidget(reminder_data)
+        reminder_widget.reminder_updated.connect(self.update_reminder)
+        reminder_widget.reminder_deleted.connect(self.delete_reminder)
+        
+        # Agregar a la lista principal
+        list_item = QListWidgetItem()
+        list_item.setSizeHint(QSize(0, 80))
+        self.all_reminders_list.addItem(list_item)
+        self.all_reminders_list.setItemWidget(list_item, reminder_widget)
+        
+        # Agregar a lista activa si está activo y no completado
+        if reminder_data.get('active', True) and not reminder_data.get('completed', False):
+            active_item = QListWidgetItem()
+            active_item.setSizeHint(QSize(0, 80))
+            self.active_list.addItem(active_item)
+            self.active_list.setItemWidget(active_item, reminder_widget)
+            reminder_data['active_list_item'] = active_item
+        
+        # Guardar referencias
+        reminder_data['widget'] = reminder_widget
+        reminder_data['all_list_item'] = list_item
+        
+        # Agregar a la lista local
+        self.reminders.append(reminder_data)
+        
+        # Actualizar estadísticas
+        self.update_stats()
+        self.update_next_reminder()
     
     def add_reminder(self):
         """Agregar nuevo recordatorio"""
@@ -726,11 +722,6 @@ class RemindersPanel(QWidget):
         
         date_time = f"{self.reminder_date.date().toString('dd/MM/yyyy')} {self.reminder_time.time().toString('hh:mm')}"
         
-        # Convertir prioridad a español para BD
-        priority_text = self.reminder_priority.currentText().lower()
-        
-        # Mapeo inglés → español
-
         reminder_data = {
             'title': title,
             'description': self.reminder_desc.toPlainText().strip(),
@@ -743,7 +734,7 @@ class RemindersPanel(QWidget):
             'sound': self.notify_sound.isChecked(),
             'popup': self.notify_popup.isChecked(),
             'auto_snooze': self.auto_snooze.isChecked(),
-            'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),
+            'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
         }
         
         # ✅ GUARDAR EN BASE DE DATOS
@@ -752,7 +743,9 @@ class RemindersPanel(QWidget):
                 reminder_id = self.db.save_reminder(reminder_data)
                 if reminder_id > 0:
                     reminder_data['id'] = reminder_id
-                    self.display_new_reminder(reminder_data)
+                    
+                    # ✅ CORREGIDO: Llamar al método correcto
+                    self.display_reminders()  # O usa self.add_reminder_to_list(reminder_data)
                     
                     # Limpiar formulario
                     self.reminder_title.clear()
@@ -769,7 +762,29 @@ class RemindersPanel(QWidget):
             # Modo sin base de datos
             reminder_data['id'] = self.next_id
             self.next_id += 1
-            self.display_new_reminder(reminder_data)
+            
+            # ✅ CORREGIDO: Agregar directamente a las listas
+            reminder_widget = ReminderWidget(reminder_data)
+            reminder_widget.reminder_updated.connect(self.update_reminder)
+            reminder_widget.reminder_deleted.connect(self.delete_reminder)
+            
+            # Agregar a lista principal
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 80))
+            self.all_reminders_list.addItem(list_item)
+            self.all_reminders_list.setItemWidget(list_item, reminder_widget)
+            
+            # Agregar a lista activa si está activo y no completado
+            if reminder_data.get('active', True) and not reminder_data.get('completed', False):
+                active_item = QListWidgetItem()
+                active_item.setSizeHint(QSize(0, 80))
+                self.active_list.addItem(active_item)
+                self.active_list.setItemWidget(active_item, reminder_widget)
+                reminder_data['active_list_item'] = active_item
+            
+            reminder_data['widget'] = reminder_widget
+            reminder_data['all_list_item'] = list_item
+            self.reminders.append(reminder_data)
             
             # Limpiar formulario
             self.reminder_title.clear()
@@ -777,14 +792,16 @@ class RemindersPanel(QWidget):
             self.reminder_date.setDate(QDate.currentDate())
             self.reminder_time.setTime(QTime.currentTime().addSecs(1800))
             
+            self.update_stats()
+            self.update_next_reminder()
+            
             QMessageBox.information(self, "Éxito", "Recordatorio agregado correctamente.")
-        
+    
     def quick_create_reminder(self):
         """Crear recordatorio rápido"""
         title, ok = QInputDialog.getText(self, "Recordatorio Rápido", 
-                                    "¿Qué quieres recordar?")
+                                       "¿Qué quieres recordar?")
         if ok and title:
-            # Ya está en español, esto está bien
             reminder_data = {
                 'id': self.next_id,
                 'title': title,
@@ -792,15 +809,13 @@ class RemindersPanel(QWidget):
                 'date_time': QDateTime.currentDateTime().addSecs(300).toString("dd/MM/yyyy hh:mm"),
                 'date': QDate.currentDate().toString("yyyy-MM-dd"),
                 'time': QTime.currentTime().addSecs(300).toString("hh:mm"),
-                'priority': 'media',  # ← En español
                 'recurrence': 'No repetir',
                 'active': True,
                 'completed': False,
                 'sound': True,
                 'popup': True,
                 'auto_snooze': False,
-                'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss"),
-                'priority_display': 'medium'  # Para mostrar en inglés
+                'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
             }
             
             reminder_widget = ReminderWidget(reminder_data)
@@ -1010,7 +1025,6 @@ class RemindersPanel(QWidget):
                 'description': 'Tomar vitaminas y suplementos diarios',
                 'date': QDate.currentDate().toString("yyyy-MM-dd"),
                 'time': '08:00',
-                'priority': 'high',  # ← CAMBIADO 'alta' → 'high'
                 'recurrence': 'Diario',
                 'active': True,
                 'completed': False
@@ -1020,7 +1034,6 @@ class RemindersPanel(QWidget):
                 'description': 'Revisión de progreso y planificación',
                 'date': QDate.currentDate().addDays(1).toString("yyyy-MM-dd"),
                 'time': '10:30',
-                'priority': 'medium',  # ← CAMBIADO 'media' → 'medium'
                 'recurrence': 'Semanal',
                 'active': True,
                 'completed': False
@@ -1030,7 +1043,6 @@ class RemindersPanel(QWidget):
                 'description': 'Pago de servicios (luz, agua, internet)',
                 'date': QDate.currentDate().addDays(3).toString("yyyy-MM-dd"),
                 'time': '18:00',
-                'priority': 'high',  # ← CAMBIADO 'alta' → 'high'
                 'recurrence': 'Mensual',
                 'active': True,
                 'completed': False
@@ -1040,7 +1052,6 @@ class RemindersPanel(QWidget):
                 'description': 'Llamada familiar semanal',
                 'date': QDate.currentDate().addDays(2).toString("yyyy-MM-dd"),
                 'time': '20:00',
-                'priority': 'low',  # ← CAMBIADO 'baja' → 'low'
                 'recurrence': 'Semanal',
                 'active': True,
                 'completed': True
@@ -1092,3 +1103,37 @@ class RemindersPanel(QWidget):
             if reminder.get('completed', False):
                 completed_item = QListWidgetItem(reminder.get('title', 'Sin título'))
                 self.completed_list.addItem(completed_item)
+    # En cada panel, agregar estos métodos:
+
+    def get_tasks_for_assistant(self):
+        """Obtener tareas para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                return self.db.get_tasks()
+            else:
+                return [t for t in self.tasks if not t.get('completed', False)][:5]
+        except:
+            return []
+
+    def get_events_for_assistant(self):
+        """Obtener eventos para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                today = datetime.now().strftime('%Y-%m-%d')
+                next_week = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+                return self.db.get_events(today, next_week)
+            else:
+                return self.events[:5]
+        except:
+            return []
+
+    def get_reminders_for_assistant(self):
+        """Obtener recordatorios para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                reminders = self.db.get_reminders()
+                return [r for r in reminders if r.get('active', True) and not r.get('completed', False)][:5]
+            else:
+                return [r for r in self.reminders if r.get('active', True) and not r.get('completed', False)][:5]
+        except:
+            return []

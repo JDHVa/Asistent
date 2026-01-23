@@ -27,7 +27,7 @@ except ImportError:
 
 class GeminiManager:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "APYKEY")
+        self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyD4Mx8LrJZXq24DHdxHjNV-suN8zeO_ggE")
         self.model = None
         self.conversation_history = []
         self.initialize_gemini()
@@ -249,5 +249,4 @@ class VoiceManager:
         return self.tts_available
 
 gemini_manager = GeminiManager()
-
 voice_manager = VoiceManager()

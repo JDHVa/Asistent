@@ -387,7 +387,9 @@ class SchedulePanel(QWidget):
         
         self.calendar = QCalendarWidget()
         self.calendar.setGridVisible(True)
-        self.calendar.setStyleSheet("""
+        
+        # ✅ CORREGIDO: Estilos más simples para el calendario
+        calendar_style = """
             QCalendarWidget {
                 background-color: #1e1e1e;
                 color: #e8eaed;
@@ -396,23 +398,40 @@ class SchedulePanel(QWidget):
             }
             QCalendarWidget QToolButton {
                 color: #e8eaed;
+                background-color: transparent;
+                font-size: 12px;
                 font-weight: bold;
+                padding: 5px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background-color: #3c4043;
             }
             QCalendarWidget QWidget#qt_calendar_navigationbar {
                 background-color: #2d2e31;
+                border-bottom: 1px solid #3c4043;
             }
             QCalendarWidget QSpinBox {
                 background-color: #202124;
                 color: #e8eaed;
                 border: 1px solid #3c4043;
+                border-radius: 4px;
+                padding: 3px;
+                min-width: 80px;
             }
             QCalendarWidget QAbstractItemView:enabled {
                 background-color: #1e1e1e;
                 color: #e8eaed;
                 selection-background-color: #4285f4;
                 selection-color: white;
+                border: 1px solid #3c4043;
             }
-        """)
+            QCalendarWidget QAbstractItemView:disabled {
+                color: #5f6368;
+            }
+        """
+        self.calendar.setStyleSheet(calendar_style)
+        
+        # ✅ CORREGIDO: Conectar la señal correctamente
         self.calendar.selectionChanged.connect(self.on_date_selected)
         
         calendar_layout.addWidget(self.calendar)
@@ -457,29 +476,72 @@ class SchedulePanel(QWidget):
         self.event_description.setPlaceholderText("Descripción...")
         self.event_description.setMaximumHeight(60)
         
-        # Fecha y hora
+        # ✅ CORREGIDO: Fecha y hora con estilos más simples
         datetime_layout = QHBoxLayout()
         
         date_col = QVBoxLayout()
         date_col.addWidget(QLabel("Fecha:"))
         self.event_date = QDateEdit()
         self.event_date.setDate(QDate.currentDate())
-        self.event_date.setCalendarPopup(True)
+        self.event_date.setCalendarPopup(True)  # Esto habilita el popup del calendario
+        self.event_date.setDisplayFormat("dd/MM/yyyy")
         date_col.addWidget(self.event_date)
         
         time_col = QVBoxLayout()
         time_col.addWidget(QLabel("Hora inicio:"))
         self.event_start_time = QTimeEdit()
         self.event_start_time.setTime(QTime(9, 0))
+        self.event_start_time.setDisplayFormat("hh:mm")
         time_col.addWidget(self.event_start_time)
         
         time_col.addWidget(QLabel("Hora fin:"))
         self.event_end_time = QTimeEdit()
         self.event_end_time.setTime(QTime(10, 0))
+        self.event_end_time.setDisplayFormat("hh:mm")
         time_col.addWidget(self.event_end_time)
         
         datetime_layout.addLayout(date_col)
         datetime_layout.addLayout(time_col)
+        
+        # ✅ CORREGIDO: Estilos simplificados para QDateEdit y QTimeEdit
+        date_time_style = """
+            QDateEdit, QTimeEdit {
+                background-color: #202124;
+                color: #e8eaed;
+                border: 1px solid #3c4043;
+                border-radius: 4px;
+                padding: 6px;
+                min-height: 25px;
+            }
+            QDateEdit::drop-down, QTimeEdit::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                width: 20px;
+                border-left: 1px solid #3c4043;
+            }
+            QDateEdit::down-arrow, QTimeEdit::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid #9aa0a6;
+            }
+            QCalendarWidget {
+                background-color: #1e1e1e;
+                color: #e8eaed;
+            }
+            QCalendarWidget QToolButton {
+                color: #e8eaed;
+            }
+            QCalendarWidget QAbstractItemView:enabled {
+                background-color: #1e1e1e;
+                color: #e8eaed;
+                selection-background-color: #4285f4;
+            }
+        """
+        
+        self.event_date.setStyleSheet(date_time_style)
+        self.event_start_time.setStyleSheet(date_time_style)
+        self.event_end_time.setStyleSheet(date_time_style)
         
         # Configuración adicional
         config_layout = QHBoxLayout()
@@ -517,7 +579,7 @@ class SchedulePanel(QWidget):
         
         # Estilos de inputs
         input_style = """
-            QLineEdit, QTextEdit, QComboBox, QDateEdit, QTimeEdit {
+            QLineEdit, QTextEdit, QComboBox {
                 background-color: #202124;
                 color: #e8eaed;
                 border: 1px solid #3c4043;
@@ -525,15 +587,39 @@ class SchedulePanel(QWidget):
                 padding: 8px;
                 font-size: 14px;
             }
+            QComboBox::drop-down {
+                border-left: 1px solid #3c4043;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid #9aa0a6;
+            }
         """
         
-        inputs = [self.event_title, self.event_location, self.event_description,
-                 self.event_date, self.event_start_time, self.event_end_time,
-                 self.event_color, self.event_recurrence]
-        for inp in inputs:
-            inp.setStyleSheet(input_style)
+        self.event_title.setStyleSheet(input_style)
+        self.event_location.setStyleSheet(input_style)
+        self.event_description.setStyleSheet(input_style)
+        self.event_color.setStyleSheet(input_style)
+        self.event_recurrence.setStyleSheet(input_style)
         
-        return panel
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4285f4;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3367d6;
+            }
+        """)
+        
+        return panel  
     
     def create_right_panel(self):
         """Crear panel derecho (vista de eventos)"""
@@ -738,7 +824,46 @@ class SchedulePanel(QWidget):
             self.upcoming_stat = value_label
         
         return widget
-    
+
+    def save_event(self):
+        """Guardar un nuevo evento"""
+        title = self.event_title.text().strip()
+        if not title:
+            QMessageBox.warning(self, "Advertencia", "Por favor, ingresa un título para el evento.")
+            return
+        
+        event_data = {
+            'title': title,
+            'description': self.event_desc.toPlainText().strip(),
+            'start_date': self.start_date.date().toString("yyyy-MM-dd"),
+            'end_date': self.end_date.date().toString("yyyy-MM-dd"),
+            'start_time': self.start_time.time().toString("hh:mm"),
+            'end_time': self.end_time.time().toString("hh:mm"),
+            'location': self.location.text().strip(),
+            'category': self.category.currentText(),
+            'all_day': self.all_day.isChecked()
+        }
+        
+        # Guardar en base de datos si hay usuario
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                event_id = self.db.save_event(event_data)
+                if event_id > 0:
+                    event_data['id'] = event_id
+                    self.display_new_event(event_data)
+                    QMessageBox.information(self, "Éxito", "Evento guardado correctamente.")
+                    
+                    # Limpiar formulario
+                    self.event_title.clear()
+                    self.event_desc.clear()
+                    self.location.clear()
+                else:
+                    QMessageBox.warning(self, "Error", "No se pudo guardar el evento.")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo guardar el evento: {str(e)}")
+        else:
+            QMessageBox.warning(self, "Error", 
+                            "No hay usuario activo. No se puede guardar el evento.")
     def add_event(self):
         """Agregar nuevo evento"""
         title = self.event_title.text().strip()
@@ -1009,31 +1134,17 @@ class SchedulePanel(QWidget):
     def load_events(self):
         """Cargar eventos desde la base de datos"""
         try:
-            if self.user_id:
-                # Asegurar que db existe
-                if not hasattr(self, 'db') or not self.db:
-                    self.db = get_database()
-                    if self.user_id:
-                        self.db.set_current_user(self.user_id)
+            if self.user_id and hasattr(self, 'db') and self.db:
+                # Obtener eventos de hoy y los próximos 30 días
+                from datetime import datetime, timedelta
+                today = datetime.now().strftime('%Y-%m-%d')
+                next_month = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
                 
-                self.events = self.db.get_events()
-                
-                # Asegurar que display_events existe
-                if hasattr(self, 'display_events'):
-                    self.display_events()
-                else:
-                    # Si no existe, crear uno básico
-                    self.display_events = self.create_display_events_fallback()
-                    self.display_events()
-                
-                if hasattr(self, 'update_stats'):
-                    self.update_stats()
-                if hasattr(self, 'update_daily_events'):
-                    self.update_daily_events()
-                    
+                self.events = self.db.get_events(today, next_month)
+                self.display_events()
             else:
+                # Modo sin base de datos - cargar eventos de ejemplo
                 self.load_sample_events()
-                
         except Exception as e:
             print(f"❌ Error cargando eventos desde BD: {e}")
             self.events = []
@@ -1104,3 +1215,37 @@ class SchedulePanel(QWidget):
         
         self.update_stats()
         self.update_daily_events()
+    # En cada panel, agregar estos métodos:
+
+    def get_tasks_for_assistant(self):
+        """Obtener tareas para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                return self.db.get_tasks()
+            else:
+                return [t for t in self.tasks if not t.get('completed', False)][:5]
+        except:
+            return []
+
+    def get_events_for_assistant(self):
+        """Obtener eventos para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                today = datetime.now().strftime('%Y-%m-%d')
+                next_week = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+                return self.db.get_events(today, next_week)
+            else:
+                return self.events[:5]
+        except:
+            return []
+
+    def get_reminders_for_assistant(self):
+        """Obtener recordatorios para el asistente"""
+        try:
+            if self.user_id and hasattr(self, 'db') and self.db:
+                reminders = self.db.get_reminders()
+                return [r for r in reminders if r.get('active', True) and not r.get('completed', False)][:5]
+            else:
+                return [r for r in self.reminders if r.get('active', True) and not r.get('completed', False)][:5]
+        except:
+            return []

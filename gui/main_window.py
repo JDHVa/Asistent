@@ -12,7 +12,6 @@ from PySide6.QtCore import Qt, QSize, Signal, QTimer
 from PySide6.QtGui import QIcon, QFont, QPalette, QColor, QAction
 import os
 import sys
-import hashlib
 
 # Añadir directorio actual al path para imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +43,7 @@ except ImportError as e:
 except Exception as e:
     print(f"⚠️ Error inicializando base de datos: {e}")
     DATABASE_AVAILABLE = False
+
 # Importar el asistente global
 try:
     from global_assistant import get_global_assistant
@@ -51,7 +51,7 @@ try:
 except ImportError as e:
     print(f"⚠️ No se pudo importar asistente global: {e}")
     ASSISTANT_AVAILABLE = False
-    def get_global_assistant():
+    def get_global_assistant(user_id=None, user_name="Usuario"):
         return None
 
 # Importar los paneles (con manejo de errores)
@@ -110,6 +110,8 @@ except ImportError as e:
             layout = QVBoxLayout()
             layout.addWidget(label)
             self.setLayout(layout)
+        def get_tasks_for_assistant(self):
+            return []
     
     class TasksPanel(QWidget):
         def __init__(self, user_id=None, parent=None):
@@ -119,6 +121,12 @@ except ImportError as e:
             layout = QVBoxLayout()
             layout.addWidget(label)
             self.setLayout(layout)
+        def get_tasks_for_assistant(self):
+            return []
+        def get_events_for_assistant(self):
+            return []
+        def get_reminders_for_assistant(self):
+            return []
     
     class SchedulePanel(QWidget):
         def __init__(self, user_id=None, parent=None):
@@ -128,6 +136,8 @@ except ImportError as e:
             layout = QVBoxLayout()
             layout.addWidget(label)
             self.setLayout(layout)
+        def get_events_for_assistant(self):
+            return []
     
     class RemindersPanel(QWidget):
         def __init__(self, user_id=None, parent=None):
@@ -137,6 +147,8 @@ except ImportError as e:
             layout = QVBoxLayout()
             layout.addWidget(label)
             self.setLayout(layout)
+        def get_reminders_for_assistant(self):
+            return []
 
 class TitleBar(QFrame):
     """Barra de título personalizada CORREGIDA"""
@@ -228,7 +240,6 @@ class TitleBar(QFrame):
             self.maximize_btn.setText("❐")
 
 class MainWindow(QMainWindow):
-
     def __init__(self, user_id=None, username=None):
         super().__init__()
         
@@ -316,18 +327,21 @@ class MainWindow(QMainWindow):
                 
                 # Usar el nombre REAL del usuario, no el ID
                 actual_name = self.user_data.get('name', self.username)
-                self.global_assistant = get_global_assistant(actual_name)
+                self.assistant = get_global_assistant(self.user_id, actual_name)
                 
-                if self.global_assistant:
-                    self.setup_assistant_callbacks()
-                    self.setup_assistant_connections()
+                if self.assistant:
+                    # Conectar señales del asistente
+                    self.assistant.response_ready.connect(self.show_assistant_response)
+                    self.assistant.error_occurred.connect(self.show_assistant_error)
                     print(f"✅ Asistente global inicializado para: {actual_name}")
                 else:
                     print("⚠️ Asistente global no disponible")
-                    self.global_assistant = None
+                    self.assistant = None
+            else:
+                self.assistant = None
         except Exception as e:
             print(f"❌ Error inicializando asistente global: {e}")
-            self.global_assistant = None
+            self.assistant = None
         
         # Configurar ventana e interfaz
         try:
@@ -342,14 +356,15 @@ class MainWindow(QMainWindow):
             traceback.print_exc()
             # Aún así mostrar la ventana con error mínimo
             self.setup_minimal_ui()
-            # Verificación final del estado
+        
+        # Verificación final del estado
         print("\n" + "=" * 60)
         print("📊 RESUMEN DE INICIALIZACIÓN:")
         print(f"👤 Usuario: {self.username}")
         print(f"🔑 ID: {self.user_id}")
         print(f"📁 User Data: {self.user_data}")
         print(f"🗄️  Base de datos: {'✅ Disponible' if self.db else '❌ No disponible'}")
-        print(f"🤖 Asistente: {'✅ Inicializado' if self.global_assistant else '❌ No disponible'}")
+        print(f"🤖 Asistente: {'✅ Inicializado' if self.assistant else '❌ No disponible'}")
         print("=" * 60 + "\n")
     
     def setup_minimal_ui(self):
@@ -387,168 +402,65 @@ class MainWindow(QMainWindow):
     
     def setup_assistant_callbacks(self):
         """Configurar callbacks para que el asistente acceda a los datos"""
-        if not self.global_assistant:
+        if not self.assistant:
             return
         
-        # Obtener información ACTUAL del usuario
-        user_name = self.user_data.get('name', self.username)
-        
-        print(f"🔧 Configurando callbacks para usuario: {user_name}")
-        
+        # Registrar callbacks para que el asistente obtenga datos de los paneles
         callbacks = {
-            'get_current_panel': self.get_current_panel,
-            'get_tasks': self.get_current_tasks,
-            'get_events': self.get_current_events,
-            'get_reminders': self.get_current_reminders,
-            'user_name': user_name,
-            'user_id': self.user_id,
-            'db': self.db if hasattr(self, 'db') else None
+            'get_tasks': self.get_tasks_for_assistant,
+            'get_events': self.get_events_for_assistant,
+            'get_reminders': self.get_reminders_for_assistant,
+            'get_current_panel': self.get_current_panel_name
         }
-        
-        self.global_assistant.register_callbacks(callbacks)
-        
-        # También actualizar el nombre directamente en los componentes del asistente
-        if hasattr(self.global_assistant, 'user_name'):
-            self.global_assistant.user_name = user_name
-        
-        # Si hay un componente Gemini dentro del asistente
-        if hasattr(self.global_assistant, 'gemini'):
-            if hasattr(self.global_assistant.gemini, 'user_name'):
-                self.global_assistant.gemini.user_name = user_name
-            # También podemos pasar el user_id al gemini si es necesario
-            if hasattr(self.global_assistant.gemini, 'user_id'):
-                self.global_assistant.gemini.user_id = self.user_id
+        self.assistant.register_callbacks(callbacks)
     
-    def setup_assistant_connections(self):
-        """Conectar señales del asistente global"""
-        if not self.global_assistant:
-            return
-        
+    def get_tasks_for_assistant(self):
+        """Obtener tareas para el asistente"""
         try:
-            if hasattr(self.global_assistant, 'command_received'):
-                self.global_assistant.command_received.connect(self.on_assistant_command)
-            
-            if hasattr(self.global_assistant, 'response_ready'):
-                self.global_assistant.response_ready.connect(self.on_assistant_response)
-            
-            if hasattr(self.global_assistant, 'error_occurred'):
-                self.global_assistant.error_occurred.connect(self.on_assistant_error)
-                
-            print("✅ Conexiones del asistente configuradas")
+            if hasattr(self, 'tasks_panel') and hasattr(self.tasks_panel, 'get_tasks_for_assistant'):
+                return self.tasks_panel.get_tasks_for_assistant()
         except Exception as e:
-            print(f"⚠️ Error configurando conexiones del asistente: {e}")
-
-
-    def setup_assistant_callbacks(self):
-        """Configurar callbacks para que el asistente acceda a los datos"""
-        if not self.global_assistant:
-            return
-        
-        # Obtener nombre del usuario actual
-        user_name = self.user_data.get('name', 'Usuario')
-        
-        callbacks = {
-            'get_current_panel': self.get_current_panel,
-            'get_tasks': self.get_current_tasks,
-            'get_events': self.get_current_events,
-            'get_reminders': self.get_current_reminders,
-            'user_name': user_name  # ← Añadir esto si GlobalDataManager lo soporta
-        }
-        
-        self.global_assistant.register_callbacks(callbacks)
-        
-        # También puedes actualizar el nombre directamente
-        if hasattr(self.global_assistant, 'user_name'):
-            self.global_assistant.user_name = user_name
-        if hasattr(self.global_assistant, 'gemini') and hasattr(self.global_assistant.gemini, 'user_name'):
-            self.global_assistant.gemini.user_name = user_name
-
-    def setup_assistant_connections(self):
-        """Conectar señales del asistente global"""
-        if not self.global_assistant:
-            return
-        
-        self.global_assistant.command_received.connect(self.on_assistant_command)
-        self.global_assistant.response_ready.connect(self.on_assistant_response)
-        self.global_assistant.error_occurred.connect(self.on_assistant_error)
-
-    def get_current_panel(self):
-        """Obtener el panel actual"""
-        tab_names = ["Chat", "Tareas", "Horario", "Recordatorios"]
+            print(f"⚠️ Error obteniendo tareas para asistente: {e}")
+        return []
+    
+    def get_events_for_assistant(self):
+        """Obtener eventos para el asistente"""
+        try:
+            if hasattr(self, 'schedule_panel') and hasattr(self.schedule_panel, 'get_events_for_assistant'):
+                return self.schedule_panel.get_events_for_assistant()
+        except Exception as e:
+            print(f"⚠️ Error obteniendo eventos para asistente: {e}")
+        return []
+    
+    def get_reminders_for_assistant(self):
+        """Obtener recordatorios para el asistente"""
+        try:
+            if hasattr(self, 'reminders_panel') and hasattr(self.reminders_panel, 'get_reminders_for_assistant'):
+                return self.reminders_panel.get_reminders_for_assistant()
+        except Exception as e:
+            print(f"⚠️ Error obteniendo recordatorios para asistente: {e}")
+        return []
+    
+    def get_current_panel_name(self):
+        """Obtener nombre del panel actual"""
         if hasattr(self, 'tab_widget'):
-            current_index = self.tab_widget.currentIndex()
-            if 0 <= current_index < len(tab_names):
-                return tab_names[current_index]
-        return "Desconocido"
+            current_tab = self.tab_widget.currentWidget()
+            if current_tab == self.tasks_panel:
+                return "Tareas"
+            elif current_tab == self.schedule_panel:
+                return "Calendario"
+            elif current_tab == self.reminders_panel:
+                return "Recordatorios"
+        return "Principal"
     
-    def get_current_tasks(self):
-        """Obtener tareas del panel de tareas"""
-        try:
-            if hasattr(self, 'tasks_panel'):
-                if hasattr(self.tasks_panel, 'tasks'):
-                    return self.tasks_panel.tasks
-        except Exception as e:
-            print(f"⚠️ Error obteniendo tareas: {e}")
-        return []
+    def show_assistant_response(self, response):
+        """Mostrar respuesta del asistente"""
+        QMessageBox.information(self, "🤖 Asistente", response)
     
-    def get_current_events(self):
-        """Obtener eventos del panel de horario"""
-        try:
-            if hasattr(self, 'schedule_panel'):
-                if hasattr(self.schedule_panel, 'events'):
-                    return self.schedule_panel.events
-        except Exception as e:
-            print(f"⚠️ Error obteniendo eventos: {e}")
-        return []
+    def show_assistant_error(self, error):
+        """Mostrar error del asistente"""
+        QMessageBox.warning(self, "Error del Asistente", error)
     
-    def get_current_reminders(self):
-        """Obtener recordatorios del panel de recordatorios"""
-        try:
-            if hasattr(self, 'reminders_panel'):
-                if hasattr(self.reminders_panel, 'reminders'):
-                    return self.reminders_panel.reminders
-        except Exception as e:
-            print(f"⚠️ Error obteniendo recordatorios: {e}")
-        return []
-    
-    def on_assistant_command(self, command):
-        """Manejar comando recibido del asistente"""
-        print(f"🎤 Comando recibido: {command}")
-        # Mostrar notificación en la barra de estado
-        if hasattr(self, 'statusBar'):
-            self.statusBar().showMessage(f"🎤 {command[:50]}...", 3000)
-    
-    def on_assistant_response(self, response):
-        """Manejar respuesta del asistente"""
-        print(f"🤖 Respuesta: {response}")
-        # Mostrar notificación en la barra de estado
-        if hasattr(self, 'statusBar'):
-            self.statusBar().showMessage(f"🤖 {response[:50]}...", 5000)
-        
-        # Si estamos en el panel de chat, también mostrar ahí
-        if hasattr(self, 'chat_panel') and hasattr(self.chat_panel, 'add_message'):
-            if hasattr(self, 'tab_widget'):
-                current_tab = self.tab_widget.currentIndex()
-                if current_tab == 0:  # Panel de chat
-                    self.chat_panel.add_message("Asistente", response)
-    
-    def on_assistant_error(self, error):
-        """Manejar error del asistente"""
-        print(f"❌ Error del asistente: {error}")
-        if hasattr(self, 'statusBar'):
-            self.statusBar().showMessage(f"❌ {error}", 5000)
-        
-    def setup_window(self):
-        """Configuración básica de la ventana"""
-        self.setWindowTitle("Asistente Personal")
-        self.setMinimumSize(1100, 750)
-        
-        # Para ventana sin bordes nativos
-        self.setWindowFlags(Qt.FramelessWindowHint)
-        
-        # Para permitir sombras y efectos
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        
     def setup_ui(self):
         """Configurar la interfaz de usuario - CORREGIDO"""
         # Configurar ventana sin bordes nativos
@@ -679,13 +591,9 @@ class MainWindow(QMainWindow):
         
         # Conectar señal de cambio de pestaña
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
-    
-    def create_tab_icon(self, emoji):
-        """Crear icono de pestaña con emoji"""
-        label = QLabel(emoji)
-        label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("font-size: 16px;")
-        return label
+        
+        # Configurar callbacks del asistente después de crear los paneles
+        self.setup_assistant_callbacks()
     
     def setup_status_bar(self):
         """Configurar la barra de estado"""
@@ -796,8 +704,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Manejador de cierre de ventana"""
         # Detener el asistente global si existe
-        if hasattr(self, 'global_assistant') and self.global_assistant:
-            self.global_assistant.stop()
+        if hasattr(self, 'assistant') and self.assistant:
+            self.assistant.stop()
         
         reply = QMessageBox.question(
             self, 'Salir',

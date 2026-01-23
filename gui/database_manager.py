@@ -1,988 +1,987 @@
+"""
+Gestor de base de datos SQLite para el Asistente Personal.
+Maneja todas las operaciones de base de datos para usuarios, tareas, recordatorios, eventos, notas, etc.
+"""
 import sqlite3
 import os
+from datetime import datetime
 import json
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import Dict, List, Optional, Any
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    """Gestor de base de datos SQLite con todo en inglés"""
+    """Gestor centralizado de base de datos para el Asistente Personal"""
     
-    def __init__(self, db_path: str = None):
-        if db_path is None:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            db_dir = os.path.join(current_dir, "..", "data", "database")
-            os.makedirs(db_dir, exist_ok=True)
-            db_path = os.path.join(db_dir, "assistant.db")
-        
-        self.db_path = db_path
-        self.connection = None
-        self.current_user_id = None
-        self.setup_database()
+    _instance = None
+    _database_initialized = False
     
-    def connect(self):
-        """Conectar a la base de datos"""
-        self.connection = sqlite3.connect(self.db_path)
-        self.connection.row_factory = sqlite3.Row  # Para acceder por nombre de columna
-        return self.connection
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DatabaseManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
     
-    def close(self):
-        """Cerrar conexión"""
-        if self.connection:
-            self.connection.close()
-            self.connection = None
+    def __init__(self):
+        if self._initialized:
+            return
+            
+        # Usar ruta absoluta para la base de datos
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)  # Subir un nivel si estamos en gui/
+        data_dir = os.path.join(parent_dir, "data")
+        
+        self.db_path = os.path.join(data_dir, "asistente_personal.db")
+        self.current_user = None
+        
+        print(f"📁 Ruta de base de datos: {self.db_path}")
+        self._create_directories()
+        self._init_database()
+        self._initialized = True
+        
+    def _create_directories(self):
+        """Crear directorios necesarios"""
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        logger.info(f"✅ Directorio creado: {os.path.dirname(self.db_path)}")
     
-    def setup_database(self):
-        """Crear tablas si no existen - TODO EN INGLÉS"""
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        # Tabla de usuarios
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE NOT NULL,
-                name TEXT,
-                email TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                settings TEXT DEFAULT '{}'
-            )
-        ''')
-        
-        # Tabla de tareas - EN INGLÉS
-            # Para la tabla tasks
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                title TEXT NOT NULL,
-                description TEXT,
-                priority TEXT CHECK(priority IN ('alta', 'media', 'baja', 'high', 'medium', 'low')),
-                category TEXT,
-                due_date TEXT,
-                due_time TEXT,
-                completed INTEGER DEFAULT 0,
-                created_at TEXT,
-                updated_at TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Tabla de eventos
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                location TEXT,
-                description TEXT,
-                date TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                color TEXT DEFAULT '#4285f4',
-                recurrence TEXT DEFAULT 'No repetir',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # Para la tabla reminders
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS reminders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                title TEXT NOT NULL,
-                description TEXT,
-                date TEXT,
-                time TEXT,
-                date_time TEXT,
-                priority TEXT CHECK(priority IN ('alta', 'media', 'baja', 'high', 'medium', 'low')),
-                recurrence TEXT,
-                active INTEGER DEFAULT 1,
-                completed INTEGER DEFAULT 0,
-                sound INTEGER DEFAULT 1,
-                popup INTEGER DEFAULT 1,
-                auto_snooze INTEGER DEFAULT 0,
-                created_at TEXT,
-                updated_at TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Tabla de conversaciones
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS conversations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                role TEXT CHECK(role IN ('user', 'assistant')) NOT NULL,
-                content TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        # Tabla de configuraciones
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_settings (
-                user_id TEXT PRIMARY KEY,
-                voice_enabled BOOLEAN DEFAULT 1,
-                auto_start BOOLEAN DEFAULT 1,
-                theme TEXT DEFAULT 'dark',
-                language TEXT DEFAULT 'es',
-                notification_sound BOOLEAN DEFAULT 1,
-                data_retention_days INTEGER DEFAULT 365,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
-            )
-        ''')
-        
-        conn.commit()
-        self.close()
-        print(f"✅ Base de datos inicializada (inglés): {self.db_path}")
-
-    # ===== MÉTODOS DE USUARIO =====
-    def delete_reminder(self, reminder_id: int, user_id: str = None) -> bool:
-        """Eliminar un recordatorio"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def _init_database(self):
+        """Inicializar la base de datos con todas las tablas"""
         try:
+            logger.info(f"🔄 Inicializando base de datos en: {self.db_path}")
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Tabla de usuarios
             cursor.execute('''
-                DELETE FROM reminders 
-                WHERE id = ? AND user_id = ?
-            ''', (reminder_id, user_id))
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE,
+                    created_at TEXT,
+                    last_login TEXT,
+                    settings TEXT DEFAULT '{}'
+                )
+            ''')
+            
+            # Tabla de tareas (SIN campo priority)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT,
+                    due_date TEXT,
+                    due_time TEXT,
+                    completed INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Tabla de recordatorios (SIN campo priority)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    date TEXT,
+                    time TEXT,
+                    date_time TEXT,
+                    recurrence TEXT,
+                    active INTEGER DEFAULT 1,
+                    completed INTEGER DEFAULT 0,
+                    sound INTEGER DEFAULT 1,
+                    popup INTEGER DEFAULT 1,
+                    auto_snooze INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Tabla de eventos
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    start_date TEXT,
+                    end_date TEXT,
+                    start_time TEXT,
+                    end_time TEXT,
+                    location TEXT,
+                    category TEXT,
+                    all_day INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Tabla de notas
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    title TEXT NOT NULL,
+                    content TEXT,
+                    category TEXT,
+                    color TEXT DEFAULT '#FFFFFF',
+                    tags TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Tabla de conversaciones (para chat)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT,
+                    title TEXT,
+                    messages TEXT,  -- JSON con mensajes
+                    created_at TEXT,
+                    updated_at TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Índices para mejor rendimiento
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date)')
+            
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(active)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_reminders_date ON reminders(date)')
+            
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_start_date ON events(start_date)')
+            
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)')
             
             conn.commit()
-            return cursor.rowcount > 0
+            conn.close()
+            
+            logger.info("✅ Base de datos inicializada correctamente")
+            DatabaseManager._database_initialized = True
+            
+            # Verificar tablas creadas
+            self._verify_tables()
             
         except Exception as e:
-            conn.rollback()
-            print(f"❌ Error eliminando recordatorio: {e}")
-            return False
-        finally:
-            self.close()
+            logger.error(f"❌ Error inicializando base de datos: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
-    def create_user(self, user_id: str, name: str = None, email: str = None) -> str:
-        """Crear un nuevo usuario con ID único"""
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def _verify_tables(self):
+        """Verificar que las tablas se han creado correctamente"""
         try:
-            cursor.execute('''
-                INSERT OR IGNORE INTO users (user_id, name, email, last_login)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            ''', (user_id, name, email))
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            # Crear configuración por defecto
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            
+            print("📊 Tablas en la base de datos:")
+            for table in tables:
+                print(f"  - {table[0]}")
+            
+            conn.close()
+        except Exception as e:
+            logger.error(f"❌ Error verificando tablas: {e}")
+    
+    def set_current_user(self, user_id: str):
+        """Establecer el usuario actual"""
+        self.current_user = user_id
+        logger.debug(f"Usuario actual establecido: {user_id}")
+    
+    # ===== OPERACIONES DE USUARIOS =====
+    
+    def create_user(self, user_data: Dict) -> bool:
+        """Crear un nuevo usuario"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
             cursor.execute('''
-                INSERT OR IGNORE INTO user_settings (user_id)
-                VALUES (?)
-            ''', (user_id,))
+                INSERT OR REPLACE INTO users (id, name, email, created_at, last_login, settings)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                user_data.get('id'),
+                user_data.get('name'),
+                user_data.get('email'),
+                user_data.get('created_at', datetime.now().isoformat()),
+                datetime.now().isoformat(),
+                json.dumps(user_data.get('settings', {}))
+            ))
             
             conn.commit()
+            conn.close()
             
-            # Actualizar usuario existente si ya existe
-            if cursor.rowcount == 0:
-                cursor.execute('''
-                    UPDATE users 
-                    SET name = COALESCE(?, name),
-                        email = COALESCE(?, email),
-                        last_login = CURRENT_TIMESTAMP
-                    WHERE user_id = ?
-                ''', (name, email, user_id))
-                conn.commit()
-            
-            self.current_user_id = user_id
-            print(f"✅ Usuario {user_id} configurado/actualizado")
-            return user_id
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error creando usuario: {e}")
-            return None
-        finally:
-            self.close()
-    
-    def set_current_user(self, user_id: str) -> bool:
-        """Establecer usuario actual"""
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
-            user = cursor.fetchone()
-            
-            if user:
-                self.current_user_id = user_id
-                
-                # Actualizar último login
-                cursor.execute('''
-                    UPDATE users 
-                    SET last_login = CURRENT_TIMESTAMP 
-                    WHERE user_id = ?
-                ''', (user_id,))
-                conn.commit()
-                
-                print(f"✅ Usuario actual establecido: {user_id}")
-                return True
-            else:
-                print(f"⚠️ Usuario no encontrado: {user_id}")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error estableciendo usuario: {e}")
-            return False
-        finally:
-            self.close()
-    
-    def get_user_info(self, user_id: str = None) -> Optional[Dict]:
-        """Obtener información del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        if not user_id:
-            return None
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                SELECT u.*, us.* 
-                FROM users u
-                LEFT JOIN user_settings us ON u.user_id = us.user_id
-                WHERE u.user_id = ?
-            ''', (user_id,))
-            
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error obteniendo información del usuario: {e}")
-            return None
-        finally:
-            self.close()
-    
-    def update_user_settings(self, settings: Dict, user_id: str = None) -> bool:
-        """Actualizar configuración del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        if not user_id:
-            return False
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            for key, value in settings.items():
-                cursor.execute(f'''
-                    UPDATE user_settings 
-                    SET {key} = ?
-                    WHERE user_id = ?
-                ''', (value, user_id))
-            
-            conn.commit()
+            logger.info(f"✅ Usuario creado/actualizado: {user_data.get('name')}")
             return True
             
         except Exception as e:
-            conn.rollback()
-            print(f"❌ Error actualizando configuración: {e}")
+            logger.error(f"❌ Error creando usuario: {e}")
             return False
-        finally:
-            self.close()
     
-    def get_all_users(self) -> List[Dict]:
-        """Obtener todos los usuarios (para administración)"""
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def get_user(self, user_id: str) -> Optional[Dict]:
+        """Obtener usuario por ID"""
         try:
-            cursor.execute('''
-                SELECT u.*, us.voice_enabled, us.theme, us.language
-                FROM users u
-                LEFT JOIN user_settings us ON u.user_id = us.user_id
-                ORDER BY u.last_login DESC
-            ''')
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
             
-            return [dict(row) for row in cursor.fetchall()]
+            cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+            row = cursor.fetchone()
+            
+            conn.close()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'email': row['email'],
+                    'created_at': row['created_at'],
+                    'last_login': row['last_login'],
+                    'settings': json.loads(row['settings']) if row['settings'] else {}
+                }
+            return None
             
         except Exception as e:
-            print(f"❌ Error obteniendo usuarios: {e}")
-            return []
-        finally:
-            self.close()
+            logger.error(f"❌ Error obteniendo usuario: {e}")
+            return None
     
-    # ===== MÉTODOS DE TAREAS =====
-    
-    def save_task(self, task_data: Dict, user_id: str = None) -> int:
-        """Guardar una tarea (crear o actualizar) - SIN CONVERSIONES"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        if not user_id:
-            raise ValueError("No hay usuario activo")
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def update_user_last_login(self, user_id: str):
+        """Actualizar último login del usuario"""
         try:
-            # Asegurar prioridad en inglés
-            priority = task_data.get('priority', 'medium').lower()
-            if priority not in ['high', 'medium', 'low']:
-                # Mapeo automático si viene en español
-                priority_map = {
-                    'alta': 'high',
-                    'media': 'medium', 
-                    'baja': 'low'
-                }
-                priority = priority_map.get(priority, 'medium')
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            print(f"DEBUG: Guardando tarea con prioridad: {priority}")
-            
-            task_id = task_data.get('id')
-            
-            if task_id:  # Actualizar
-                cursor.execute('''
-                    UPDATE tasks SET
-                        title = ?,
-                        description = ?,
-                        priority = ?,
-                        category = ?,
-                        due_date = ?,
-                        due_time = ?,
-                        completed = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (
-                    task_data['title'],
-                    task_data.get('description', ''),
-                    priority,
-                    task_data.get('category', ''),
-                    task_data.get('due_date'),
-                    task_data.get('due_time'),
-                    1 if task_data.get('completed', False) else 0,
-                    task_id,
-                    user_id
-                ))
-            else:  # Crear nueva
-                cursor.execute('''
-                    INSERT INTO tasks (
-                        user_id, title, description, priority, 
-                        category, due_date, due_time, completed
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    user_id,
-                    task_data['title'],
-                    task_data.get('description', ''),
-                    priority,
-                    task_data.get('category', ''),
-                    task_data.get('due_date'),
-                    task_data.get('due_time'),
-                    1 if task_data.get('completed', False) else 0
-                ))
-                task_id = cursor.lastrowid
+            cursor.execute('''
+                UPDATE users SET last_login = ? WHERE id = ?
+            ''', (datetime.now().isoformat(), user_id))
             
             conn.commit()
+            conn.close()
+            
+            logger.debug(f"Último login actualizado para usuario: {user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error actualizando último login: {e}")
+    
+    def update_user_settings(self, user_id: str, settings: Dict):
+        """Actualizar configuración del usuario"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE users SET settings = ? WHERE id = ?
+            ''', (json.dumps(settings), user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.debug(f"Configuración actualizada para usuario: {user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error actualizando configuración: {e}")
+    
+    # ===== OPERACIONES DE TAREAS =====
+    
+    def save_task(self, task_data: Dict) -> int:
+        """Guardar tarea en base de datos (crear o actualizar)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if 'id' in task_data and task_data['id']:
+                # Actualizar tarea existente
+                cursor.execute('''
+                    UPDATE tasks 
+                    SET title = ?, description = ?, category = ?, 
+                        due_date = ?, due_time = ?, completed = ?,
+                        updated_at = ?
+                    WHERE id = ? AND user_id = ?
+                ''', (
+                    task_data.get('title', ''),
+                    task_data.get('description', ''),
+                    task_data.get('category', ''),
+                    task_data.get('due_date', ''),
+                    task_data.get('due_time', ''),
+                    1 if task_data.get('completed', False) else 0,
+                    datetime.now().isoformat(),
+                    task_data['id'],
+                    self.current_user
+                ))
+                task_id = task_data['id']
+                logger.debug(f"✅ Tarea actualizada: {task_id}")
+            else:
+                # Insertar nueva tarea
+                cursor.execute('''
+                    INSERT INTO tasks 
+                    (user_id, title, description, category, due_date, due_time, completed, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    self.current_user,
+                    task_data.get('title', ''),
+                    task_data.get('description', ''),
+                    task_data.get('category', ''),
+                    task_data.get('due_date', ''),
+                    task_data.get('due_time', ''),
+                    1 if task_data.get('completed', False) else 0,
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                ))
+                task_id = cursor.lastrowid
+                logger.debug(f"✅ Nueva tarea guardada: {task_id}")
+            
+            conn.commit()
+            conn.close()
             return task_id
             
         except Exception as e:
-            conn.rollback()
-            print(f"❌ Error guardando tarea: {e}")
+            logger.error(f"❌ Error guardando tarea: {e}")
             import traceback
             traceback.print_exc()
             return -1
-        finally:
-            self.close()
     
-
-    def get_tasks(self, user_id: str = None, filters: Dict = None) -> List[Dict]:
-        """Obtener tareas del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        if not user_id:
-            return []
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def get_tasks(self, filters: Dict = None) -> List[Dict]:
+        """Obtener todas las tareas del usuario actual con filtros opcionales"""
         try:
-            query = '''
-                SELECT * FROM tasks 
-                WHERE user_id = ?
-            '''
-            params = [user_id]
+            if not self.current_user:
+                logger.warning("⚠️ No hay usuario establecido")
+                return []
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
             
-            # Aplicar filtros
+            query = 'SELECT * FROM tasks WHERE user_id = ?'
+            params = [self.current_user]
+            
             if filters:
                 conditions = []
                 
                 if filters.get('completed') is not None:
-                    conditions.append("completed = ?")
+                    conditions.append('completed = ?')
                     params.append(1 if filters['completed'] else 0)
                 
-                if filters.get('priority'):
-                    conditions.append("priority = ?")
-                    params.append(filters['priority'])
-                
                 if filters.get('category'):
-                    conditions.append("category = ?")
+                    conditions.append('category = ?')
                     params.append(filters['category'])
                 
                 if filters.get('due_date'):
-                    conditions.append("due_date = ?")
+                    conditions.append('due_date = ?')
                     params.append(filters['due_date'])
                 
                 if conditions:
-                    query += " AND " + " AND ".join(conditions)
+                    query += ' AND ' + ' AND '.join(conditions)
             
-            # Ordenar
-            if filters and filters.get('sort_by'):
-                sort_field = filters['sort_by']
-                order = "DESC" if filters.get('sort_desc', False) else "ASC"
-                query += f" ORDER BY {sort_field} {order}"
-            else:
-                query += " ORDER BY due_date ASC, priority DESC"
+            # Ordenar por fecha de vencimiento
+            query += ' ORDER BY due_date ASC, due_time ASC'
             
             cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            
+            tasks = []
+            for row in rows:
+                tasks.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'category': row['category'],
+                    'due_date': row['due_date'],
+                    'due_time': row['due_time'],
+                    'completed': bool(row['completed']),
+                    'created_at': row['created_at']
+                })
+            
+            conn.close()
+            logger.debug(f"✅ Tareas obtenidas: {len(tasks)}")
+            return tasks
             
         except Exception as e:
-            print(f"❌ Error obteniendo tareas: {e}")
+            logger.error(f"❌ Error obteniendo tareas: {e}")
             return []
-        finally:
-            self.close()
     
-    def delete_task(self, task_id: int, user_id: str = None) -> bool:
-        """Eliminar una tarea"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def get_task(self, task_id: int) -> Optional[Dict]:
+        """Obtener una tarea específica por ID"""
         try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
             cursor.execute('''
-                DELETE FROM tasks 
-                WHERE id = ? AND user_id = ?
-            ''', (task_id, user_id))
+                SELECT * FROM tasks WHERE id = ? AND user_id = ?
+            ''', (task_id, self.current_user))
             
-            conn.commit()
-            return cursor.rowcount > 0
+            row = cursor.fetchone()
+            conn.close()
             
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error eliminando tarea: {e}")
-            return False
-        finally:
-            self.close()
-    
-    def get_tasks_summary(self, user_id: str = None) -> Dict:
-        """Obtener resumen de tareas"""
-        tasks = self.get_tasks(user_id)
-        
-        total = len(tasks)
-        completed = sum(1 for t in tasks if t['completed'])
-        pending = total - completed
-        
-        # Contar por prioridad
-        high_priority = sum(1 for t in tasks if t['priority'] == 'high' and not t['completed'])
-        
-        # Tareas próximas (para hoy o mañana)
-        today = datetime.now().strftime("%Y-%m-%d")
-        upcoming = [t for t in tasks if t['due_date'] and t['due_date'] >= today and not t['completed']]
-        
-        return {
-            'total': total,
-            'completed': completed,
-            'pending': pending,
-            'high_priority': high_priority,
-            'upcoming': len(upcoming)
-        }
-    
-    # ===== MÉTODOS DE EVENTOS =====
-    
-    def save_event(self, event_data: Dict, user_id: str = None) -> int:
-        """Guardar un evento"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            event_id = event_data.get('id')
-            
-            if event_id:  # Actualizar
-                cursor.execute('''
-                    UPDATE events SET
-                        title = ?,
-                        location = ?,
-                        description = ?,
-                        date = ?,
-                        start_time = ?,
-                        end_time = ?,
-                        color = ?,
-                        recurrence = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ? AND user_id = ?
-                ''', (
-                    event_data['title'],
-                    event_data.get('location', ''),
-                    event_data.get('description', ''),
-                    event_data['date'],
-                    event_data['start_time'],
-                    event_data['end_time'],
-                    event_data.get('color', '#4285f4'),
-                    event_data.get('recurrence', 'No repetir'),
-                    event_id,
-                    user_id
-                ))
-            else:  # Crear nuevo
-                cursor.execute('''
-                    INSERT INTO events (
-                        user_id, title, location, description,
-                        date, start_time, end_time, color, recurrence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    user_id,
-                    event_data['title'],
-                    event_data.get('location', ''),
-                    event_data.get('description', ''),
-                    event_data['date'],
-                    event_data['start_time'],
-                    event_data['end_time'],
-                    event_data.get('color', '#4285f4'),
-                    event_data.get('recurrence', 'No repetir')
-                ))
-                event_id = cursor.lastrowid
-            
-            conn.commit()
-            return event_id
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error guardando evento: {e}")
-            return -1
-        finally:
-            self.close()
-    
-    def get_events(self, user_id: str = None, filters: Dict = None) -> List[Dict]:
-        """Obtener eventos del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            query = '''
-                SELECT * FROM events 
-                WHERE user_id = ?
-            '''
-            params = [user_id]
-            
-            if filters:
-                if filters.get('date'):
-                    query += " AND date = ?"
-                    params.append(filters['date'])
-                
-                if filters.get('start_date') and filters.get('end_date'):
-                    query += " AND date BETWEEN ? AND ?"
-                    params.extend([filters['start_date'], filters['end_date']])
-                
-                if filters.get('search'):
-                    query += " AND (title LIKE ? OR description LIKE ? OR location LIKE ?)"
-                    search_term = f"%{filters['search']}%"
-                    params.extend([search_term, search_term, search_term])
-            
-            query += " ORDER BY date ASC, start_time ASC"
-            
-            cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
-            
-        except Exception as e:
-            print(f"❌ Error obteniendo eventos: {e}")
-            return []
-        finally:
-            self.close()
-    
-    def get_events_summary(self, user_id: str = None) -> Dict:
-        """Obtener resumen de eventos"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        
-        events = self.get_events(user_id)
-        total = len(events)
-        
-        # Eventos de hoy
-        today_events = [e for e in events if e['date'] == today]
-        
-        # Eventos de esta semana
-        week_events = self.get_events(user_id, {
-            'start_date': today,
-            'end_date': (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-        })
-        
-        return {
-            'total': total,
-            'today': len(today_events),
-            'this_week': len(week_events)
-        }
-    
-    # ===== MÉTODOS DE RECORDATORIOS =====
-    
-    def save_reminder(self, reminder_data: Dict, user_id: str = None) -> int:
-        """Guardar un recordatorio - SIN CONVERSIONES"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            # Asegurar prioridad en inglés
-            priority = reminder_data.get('priority', 'medium').lower()
-            if priority not in ['high', 'medium', 'low']:
-                # Mapeo automático si viene en español
-                priority_map = {
-                    'alta': 'high',
-                    'media': 'medium', 
-                    'baja': 'low'
+            if row:
+                return {
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'category': row['category'],
+                    'due_date': row['due_date'],
+                    'due_time': row['due_time'],
+                    'completed': bool(row['completed']),
+                    'created_at': row['created_at']
                 }
-                priority = priority_map.get(priority, 'medium')
+            return None
             
-            print(f"DEBUG: Guardando recordatorio con prioridad: {priority}")
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo tarea: {e}")
+            return None
+    
+    def delete_task(self, task_id: int) -> bool:
+        """Eliminar una tarea"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            reminder_id = reminder_data.get('id')
+            cursor.execute('''
+                DELETE FROM tasks WHERE id = ? AND user_id = ?
+            ''', (task_id, self.current_user))
             
-            if reminder_id:  # Actualizar
+            conn.commit()
+            deleted = cursor.rowcount > 0
+            conn.close()
+            
+            logger.debug(f"✅ Tarea eliminada: {task_id}" if deleted else f"⚠️ Tarea no encontrada: {task_id}")
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"❌ Error eliminando tarea: {e}")
+            return False
+    
+    def get_tasks_summary(self) -> Dict:
+        """Obtener resumen estadístico de tareas"""
+        try:
+            if not self.current_user:
+                return {'total': 0, 'completed': 0, 'pending': 0, 'overdue': 0}
+                
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Total de tareas
+            cursor.execute('SELECT COUNT(*) FROM tasks WHERE user_id = ?', (self.current_user,))
+            total = cursor.fetchone()[0]
+            
+            # Tareas completadas
+            cursor.execute('SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed = 1', (self.current_user,))
+            completed = cursor.fetchone()[0]
+            
+            # Tareas pendientes
+            cursor.execute('SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed = 0', (self.current_user,))
+            pending = cursor.fetchone()[0]
+            
+            # Tareas atrasadas (pendientes con fecha pasada)
+            cursor.execute('''
+                SELECT COUNT(*) FROM tasks 
+                WHERE user_id = ? AND completed = 0 
+                AND due_date < date('now')
+            ''', (self.current_user,))
+            overdue = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            return {
+                'total': total,
+                'completed': completed,
+                'pending': pending,
+                'overdue': overdue
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo resumen de tareas: {e}")
+            return {'total': 0, 'completed': 0, 'pending': 0, 'overdue': 0}
+    
+    # ===== OPERACIONES DE RECORDATORIOS =====
+    
+    def save_reminder(self, reminder_data: Dict) -> int:
+        """Guardar recordatorio en base de datos (crear o actualizar)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if 'id' in reminder_data and reminder_data['id']:
+                # Actualizar recordatorio existente
                 cursor.execute('''
-                    UPDATE reminders SET
-                        title = ?,
-                        description = ?,
-                        date_time = ?,
-                        date = ?,
-                        time = ?,
-                        priority = ?,
-                        recurrence = ?,
-                        active = ?,
-                        completed = ?,
-                        sound = ?,
-                        popup = ?,
-                        auto_snooze = ?,
-                        updated_at = CURRENT_TIMESTAMP
+                    UPDATE reminders 
+                    SET title = ?, description = ?, date = ?, time = ?, date_time = ?,
+                        recurrence = ?, active = ?, completed = ?, sound = ?, popup = ?,
+                        auto_snooze = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
                 ''', (
-                    reminder_data['title'],
+                    reminder_data.get('title', ''),
                     reminder_data.get('description', ''),
-                    reminder_data.get('date_time', ''),
                     reminder_data.get('date', ''),
                     reminder_data.get('time', ''),
-                    priority,
-                    reminder_data.get('recurrence', 'none'),
+                    reminder_data.get('date_time', ''),
+                    reminder_data.get('recurrence', ''),
                     1 if reminder_data.get('active', True) else 0,
                     1 if reminder_data.get('completed', False) else 0,
                     1 if reminder_data.get('sound', True) else 0,
                     1 if reminder_data.get('popup', True) else 0,
                     1 if reminder_data.get('auto_snooze', False) else 0,
-                    reminder_id,
-                    user_id
+                    datetime.now().isoformat(),
+                    reminder_data['id'],
+                    self.current_user
                 ))
-            else:  # Crear nuevo
+                reminder_id = reminder_data['id']
+                logger.debug(f"✅ Recordatorio actualizado: {reminder_id}")
+            else:
+                # Insertar nuevo recordatorio
                 cursor.execute('''
-                    INSERT INTO reminders (
-                        user_id, title, description, date_time,
-                        date, time, priority, recurrence,
-                        active, completed, sound, popup, auto_snooze
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO reminders 
+                    (user_id, title, description, date, time, date_time, recurrence, 
+                     active, completed, sound, popup, auto_snooze, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    user_id,
-                    reminder_data['title'],
+                    self.current_user,
+                    reminder_data.get('title', ''),
                     reminder_data.get('description', ''),
-                    reminder_data.get('date_time', ''),
                     reminder_data.get('date', ''),
                     reminder_data.get('time', ''),
-                    priority,
-                    reminder_data.get('recurrence', 'none'),
+                    reminder_data.get('date_time', ''),
+                    reminder_data.get('recurrence', ''),
                     1 if reminder_data.get('active', True) else 0,
                     1 if reminder_data.get('completed', False) else 0,
                     1 if reminder_data.get('sound', True) else 0,
                     1 if reminder_data.get('popup', True) else 0,
-                    1 if reminder_data.get('auto_snooze', False) else 0
+                    1 if reminder_data.get('auto_snooze', False) else 0,
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
                 ))
                 reminder_id = cursor.lastrowid
+                logger.debug(f"✅ Nuevo recordatorio guardado: {reminder_id}")
             
             conn.commit()
+            conn.close()
             return reminder_id
             
         except Exception as e:
-            conn.rollback()
-            print(f"❌ Error guardando recordatorio: {e}")
+            logger.error(f"❌ Error guardando recordatorio: {e}")
             import traceback
             traceback.print_exc()
             return -1
-        finally:
-            self.close()
-              
-    def get_reminders(self, user_id: str = None, filters: Dict = None) -> List[Dict]:
-        """Obtener recordatorios del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    
+    def get_reminders(self, filters: Dict = None) -> List[Dict]:
+        """Obtener todos los recordatorios del usuario actual"""
         try:
-            query = '''
-                SELECT * FROM reminders 
-                WHERE user_id = ?
-            '''
-            params = [user_id]
+            if not self.current_user:
+                return []
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            query = 'SELECT * FROM reminders WHERE user_id = ?'
+            params = [self.current_user]
             
             if filters:
                 conditions = []
                 
                 if filters.get('active') is not None:
-                    conditions.append("active = ?")
+                    conditions.append('active = ?')
                     params.append(1 if filters['active'] else 0)
                 
                 if filters.get('completed') is not None:
-                    conditions.append("completed = ?")
+                    conditions.append('completed = ?')
                     params.append(1 if filters['completed'] else 0)
                 
-                if filters.get('priority'):
-                    conditions.append("priority = ?")
-                    params.append(filters['priority'])
-                
                 if filters.get('date'):
-                    conditions.append("date = ?")
+                    conditions.append('date = ?')
                     params.append(filters['date'])
                 
-                if filters.get('upcoming'):
-                    conditions.append("date >= ?")
-                    params.append(datetime.now().strftime("%Y-%m-%d"))
-                
                 if conditions:
-                    query += " AND " + " AND ".join(conditions)
+                    query += ' AND ' + ' AND '.join(conditions)
             
-            query += " ORDER BY date ASC, time ASC"
+            # Ordenar por fecha y hora
+            query += ' ORDER BY date ASC, time ASC'
             
             cursor.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            
+            reminders = []
+            for row in rows:
+                reminders.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'date': row['date'],
+                    'time': row['time'],
+                    'date_time': row['date_time'],
+                    'recurrence': row['recurrence'],
+                    'active': bool(row['active']),
+                    'completed': bool(row['completed']),
+                    'sound': bool(row['sound']),
+                    'popup': bool(row['popup']),
+                    'auto_snooze': bool(row['auto_snooze']),
+                    'created_at': row['created_at']
+                })
+            
+            conn.close()
+            logger.debug(f"✅ Recordatorios obtenidos: {len(reminders)}")
+            return reminders
             
         except Exception as e:
-            print(f"❌ Error obteniendo recordatorios: {e}")
+            logger.error(f"❌ Error obteniendo recordatorios: {e}")
             return []
-        finally:
-            self.close()
     
-    def get_active_reminders(self, user_id: str = None) -> List[Dict]:
-        """Obtener recordatorios activos para notificaciones"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
+    def delete_reminder(self, reminder_id: int) -> bool:
+        """Eliminar un recordatorio"""
         try:
-            current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M")
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT * FROM reminders 
+                DELETE FROM reminders WHERE id = ? AND user_id = ?
+            ''', (reminder_id, self.current_user))
+            
+            conn.commit()
+            deleted = cursor.rowcount > 0
+            conn.close()
+            
+            logger.debug(f"✅ Recordatorio eliminado: {reminder_id}" if deleted else f"⚠️ Recordatorio no encontrado: {reminder_id}")
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"❌ Error eliminando recordatorio: {e}")
+            return False
+    
+    # ===== OPERACIONES DE CONVERSACIONES (CHAT) =====
+    
+    def get_conversation_history(self, limit: int = 50) -> List[Dict]:
+        """Obtener historial de conversaciones del usuario actual"""
+        try:
+            if not self.current_user:
+                return []
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, title, created_at FROM conversations 
+                WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT ?
+            ''', (self.current_user, limit))
+            
+            rows = cursor.fetchall()
+            
+            conversations = []
+            for row in rows:
+                conversations.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'created_at': row['created_at']
+                })
+            
+            conn.close()
+            logger.debug(f"✅ Historial de conversaciones obtenido: {len(conversations)}")
+            return conversations
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo historial de conversaciones: {e}")
+            return []
+    
+    def save_conversation(self, title: str, messages: List[Dict]) -> int:
+        """Guardar una conversación"""
+        try:
+            if not self.current_user:
+                return -1
+                
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO conversations (user_id, title, messages, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                self.current_user,
+                title,
+                json.dumps(messages),
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
+            ))
+            
+            conv_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            logger.debug(f"✅ Conversación guardada: {conv_id}")
+            return conv_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error guardando conversación: {e}")
+            return -1
+    
+    def get_conversation(self, conv_id: int) -> Optional[Dict]:
+        """Obtener una conversación específica"""
+        try:
+            if not self.current_user:
+                return None
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM conversations WHERE id = ? AND user_id = ?
+            ''', (conv_id, self.current_user))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'title': row['title'],
+                    'messages': json.loads(row['messages']) if row['messages'] else [],
+                    'created_at': row['created_at'],
+                    'updated_at': row['updated_at']
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo conversación: {e}")
+            return None
+    
+    # ===== MÉTODOS DE CONEXIÓN INTERNA =====
+    
+    def _get_connection(self):
+        """Obtener conexión a la base de datos (para uso interno)"""
+        return sqlite3.connect(self.db_path)
+    # ===== OPERACIONES DE EVENTOS =====
+    
+    def save_event(self, event_data: Dict) -> int:
+        """Guardar evento en base de datos"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            if 'id' in event_data and event_data['id']:
+                # Actualizar evento existente
+                cursor.execute('''
+                    UPDATE events 
+                    SET title = ?, description = ?, start_date = ?, end_date = ?,
+                        start_time = ?, end_time = ?, location = ?, category = ?,
+                        all_day = ?, updated_at = ?
+                    WHERE id = ? AND user_id = ?
+                ''', (
+                    event_data.get('title', ''),
+                    event_data.get('description', ''),
+                    event_data.get('start_date', ''),
+                    event_data.get('end_date', ''),
+                    event_data.get('start_time', ''),
+                    event_data.get('end_time', ''),
+                    event_data.get('location', ''),
+                    event_data.get('category', ''),
+                    1 if event_data.get('all_day', False) else 0,
+                    datetime.now().isoformat(),
+                    event_data['id'],
+                    self.current_user
+                ))
+                event_id = event_data['id']
+            else:
+                # Insertar nuevo evento
+                cursor.execute('''
+                    INSERT INTO events 
+                    (user_id, title, description, start_date, end_date, 
+                     start_time, end_time, location, category, all_day, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    self.current_user,
+                    event_data.get('title', ''),
+                    event_data.get('description', ''),
+                    event_data.get('start_date', ''),
+                    event_data.get('end_date', ''),
+                    event_data.get('start_time', ''),
+                    event_data.get('end_time', ''),
+                    event_data.get('location', ''),
+                    event_data.get('category', ''),
+                    1 if event_data.get('all_day', False) else 0,
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                ))
+                event_id = cursor.lastrowid
+            
+            conn.commit()
+            conn.close()
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error guardando evento: {e}")
+            return -1
+    
+    def get_events(self, start_date: str = None, end_date: str = None) -> List[Dict]:
+        """Obtener eventos del usuario actual"""
+        try:
+            if not self.current_user:
+                logger.warning("⚠️ No hay usuario establecido para obtener eventos")
+                return []
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            query = 'SELECT * FROM events WHERE user_id = ?'
+            params = [self.current_user]
+            
+            if start_date and end_date:
+                query += ' AND (start_date BETWEEN ? AND ? OR end_date BETWEEN ? AND ?)'
+                params.extend([start_date, end_date, start_date, end_date])
+            elif start_date:
+                query += ' AND start_date >= ?'
+                params.append(start_date)
+            
+            query += ' ORDER BY start_date ASC, start_time ASC'
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            events = []
+            for row in rows:
+                events.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'start_date': row['start_date'],
+                    'end_date': row['end_date'],
+                    'start_time': row['start_time'],
+                    'end_time': row['end_time'],
+                    'location': row['location'],
+                    'category': row['category'],
+                    'all_day': bool(row['all_day']),
+                    'created_at': row['created_at']
+                })
+            
+            conn.close()
+            logger.debug(f"✅ Eventos obtenidos: {len(events)}")
+            return events
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo eventos: {e}")
+            return []
+    
+    def get_event(self, event_id: int) -> Optional[Dict]:
+        """Obtener un evento específico por ID"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT * FROM events WHERE id = ? AND user_id = ?
+            ''', (event_id, self.current_user))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'title': row['title'],
+                    'description': row['description'],
+                    'start_date': row['start_date'],
+                    'end_date': row['end_date'],
+                    'start_time': row['start_time'],
+                    'end_time': row['end_time'],
+                    'location': row['location'],
+                    'category': row['category'],
+                    'all_day': bool(row['all_day']),
+                    'created_at': row['created_at']
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo evento: {e}")
+            return None
+    
+    def delete_event(self, event_id: int) -> bool:
+        """Eliminar un evento"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                DELETE FROM events WHERE id = ? AND user_id = ?
+            ''', (event_id, self.current_user))
+            
+            conn.commit()
+            deleted = cursor.rowcount > 0
+            conn.close()
+            
+            logger.debug(f"✅ Evento eliminado: {event_id}" if deleted else f"⚠️ Evento no encontrado: {event_id}")
+            return deleted
+            
+        except Exception as e:
+            logger.error(f"❌ Error eliminando evento: {e}")
+            return False
+    
+    def get_upcoming_events(self, days_ahead: int = 7) -> List[Dict]:
+        """Obtener eventos próximos en los próximos N días"""
+        try:
+            if not self.current_user:
+                return []
+                
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Calcular fecha de hoy
+            from datetime import datetime, timedelta
+            today = datetime.now().strftime('%Y-%m-%d')
+            future_date = (datetime.now() + timedelta(days=days_ahead)).strftime('%Y-%m-%d')
+            
+            cursor.execute('''
+                SELECT * FROM events 
                 WHERE user_id = ? 
-                AND active = 1 
-                AND completed = 0
-                AND (date || ' ' || time) <= ?
-                ORDER BY date ASC, time ASC
-            ''', (user_id, current_datetime))
+                AND start_date >= ?
+                AND start_date <= ?
+                ORDER BY start_date ASC, start_time ASC
+                LIMIT 20
+            ''', (self.current_user, today, future_date))
             
-            return [dict(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            
+            events = []
+            for row in rows:
+                events.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'start_date': row['start_date'],
+                    'start_time': row['start_time'],
+                    'end_date': row['end_date'],
+                    'end_time': row['end_time'],
+                    'location': row['location'],
+                    'category': row['category']
+                })
+            
+            conn.close()
+            logger.debug(f"✅ Eventos próximos obtenidos: {len(events)}")
+            return events
             
         except Exception as e:
-            print(f"❌ Error obteniendo recordatorios activos: {e}")
+            logger.error(f"❌ Error obteniendo eventos próximos: {e}")
             return []
-        finally:
-            self.close()
-    
-    # ===== MÉTODOS DE CONVERSACIONES =====
-    
-    def save_message(self, role: str, content: str, user_id: str = None) -> bool:
-        """Guardar un mensaje en la conversación"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                INSERT INTO conversations (user_id, role, content)
-                VALUES (?, ?, ?)
-            ''', (user_id, role, content))
-            
-            conn.commit()
-            return True
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error guardando mensaje: {e}")
-            return False
-        finally:
-            self.close()
-    
-    def get_conversation_history(self, user_id: str = None, limit: int = 50) -> List[Dict]:
-        """Obtener historial de conversación"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                SELECT role, content, timestamp 
-                FROM conversations 
-                WHERE user_id = ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-            ''', (user_id, limit))
-            
-            return [dict(row) for row in cursor.fetchall()]
-            
-        except Exception as e:
-            print(f"❌ Error obteniendo historial: {e}")
-            return []
-        finally:
-            self.close()
-    
-    def clear_conversation(self, user_id: str = None) -> bool:
-        """Limpiar historial de conversación"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute('''
-                DELETE FROM conversations 
-                WHERE user_id = ?
-            ''', (user_id,))
-            
-            conn.commit()
-            return True
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error limpiando conversación: {e}")
-            return False
-        finally:
-            self.close()
-    
-    # ===== MÉTODOS DE BACKUP Y RESTAURACIÓN =====
-    
-    def export_user_data(self, user_id: str = None) -> Dict:
-        """Exportar todos los datos del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        return {
-            'user_info': self.get_user_info(user_id),
-            'tasks': self.get_tasks(user_id),
-            'events': self.get_events(user_id),
-            'reminders': self.get_reminders(user_id),
-            'conversation_history': self.get_conversation_history(user_id),
-            'export_date': datetime.now().isoformat(),
-            'user_id': user_id
-        }
-    
-    def import_user_data(self, data: Dict, user_id: str = None) -> bool:
-        """Importar datos de un usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        try:
-            # Limpiar datos existentes (opcional)
-            # self.clear_user_data(user_id)
-            
-            # Importar tareas
-            for task in data.get('tasks', []):
-                task_copy = task.copy()
-                task_copy.pop('id', None)
-                self.save_task(task_copy, user_id)
-            
-            # Importar eventos
-            for event in data.get('events', []):
-                event_copy = event.copy()
-                event_copy.pop('id', None)
-                self.save_event(event_copy, user_id)
-            
-            # Importar recordatorios
-            for reminder in data.get('reminders', []):
-                reminder_copy = reminder.copy()
-                reminder_copy.pop('id', None)
-                self.save_reminder(reminder_copy, user_id)
-            
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error importando datos: {e}")
-            return False
-    
-    def clear_user_data(self, user_id: str = None) -> bool:
-        """Eliminar todos los datos del usuario"""
-        if user_id is None:
-            user_id = self.current_user_id
-        
-        conn = self.connect()
-        cursor = conn.cursor()
-        
-        try:
-            # Eliminar en orden correcto (por restricciones de claves foráneas)
-            tables = ['conversations', 'reminders', 'events', 'tasks', 'user_settings']
-            
-            for table in tables:
-                cursor.execute(f'DELETE FROM {table} WHERE user_id = ?', (user_id,))
-            
-            # No eliminamos el usuario de la tabla users para mantener el registro
-            conn.commit()
-            return True
-            
-        except Exception as e:
-            conn.rollback()
-            print(f"❌ Error limpiando datos: {e}")
-            return False
-        finally:
-            self.close()
-
-# Singleton para acceso global
-_database_instance = None
-
-def get_database() -> DatabaseManager:
-    """Obtener instancia única de la base de datos"""
-    global _database_instance
-    if _database_instance is None:
-        _database_instance = DatabaseManager()
-    return _database_instance
-
-def set_current_user(user_id: str) -> bool:
-    """Establecer usuario actual en la base de datos"""
-    db = get_database()
-    
-    # Si el usuario no existe, crearlo automáticamente
-    user_info = db.get_user_info(user_id)
-    if not user_info:
-        db.create_user(user_id, f"Usuario_{user_id[:8]}")
-    
-    return db.set_current_user(user_id)
-
-def get_current_user_id() -> Optional[str]:
-    """Obtener ID del usuario actual"""
-    db = get_database()
-    return db.current_user_id
+# Función para obtener instancia única del gestor de base de datos
+def get_database():
+    """Obtener instancia única del gestor de base de datos"""
+    return DatabaseManager()
