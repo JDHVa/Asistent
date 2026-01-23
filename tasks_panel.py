@@ -27,8 +27,10 @@ from PySide6.QtGui import (
 import json
 from datetime import datetime, timedelta
 from export_data import export_tasks, export_events, export_reminders
+from database_manager import get_database
+
 class TaskWidget(QWidget):
-    """Widget para mostrar una tarea individual"""
+    """Panel principal de gestión de tareas con base de datos"""
     
     task_updated = Signal(dict)  # Cuando la tarea se actualiza
     task_deleted = Signal(int)   # Cuando se elimina (id)
@@ -37,7 +39,30 @@ class TaskWidget(QWidget):
         super().__init__(parent)
         self.task_data = task_data
         self.setup_ui()
+
+    def load_tasks(self):
+        """Cargar tareas desde la base de datos"""
+        try:
+            self.tasks = self.db.get_tasks()
+            self.display_tasks()
+        except Exception as e:
+            print(f"❌ Error cargando tareas desde BD: {e}")
+            self.tasks = []
+
+    def display_tasks(self):
+        """Mostrar tareas desde la lista"""
+        self.tasks_list.clear()
         
+        for task in self.tasks:
+            task_widget = TaskWidget(task)
+            task_widget.task_updated.connect(self.update_task)
+            task_widget.task_deleted.connect(self.delete_task)
+            
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 90))
+            self.tasks_list.addItem(list_item)
+            self.tasks_list.setItemWidget(list_item, task_widget)
+
     def setup_ui(self):
         """Configurar la interfaz de la tarea"""
         self.setFixedHeight(90)
@@ -76,12 +101,11 @@ class TaskWidget(QWidget):
         # Prioridad
         priority = self.task_data.get('priority', 'medium')
         priority_colors = {
-            'high': ('🔥 Alta', '#ea4335'),
-            'medium': ('⚠️ Media', '#fbbc04'),
-            'low': ('📌 Baja', '#34a853')
+            'high': ('🔥 High', '#ea4335'),
+            'medium': ('⚠️ Medium', '#fbbc04'),
+            'low': ('📌 Low', '#34a853')
         }
-        priority_text, priority_color = priority_colors.get(priority, ('⚠️ Media', '#fbbc04'))
-        
+        priority_text, priority_color = priority_colors.get(priority, ('⚠️ Medium', '#fbbc04'))
         priority_label = QLabel(priority_text)
         priority_label.setStyleSheet(f"""
             QLabel {{
@@ -93,7 +117,7 @@ class TaskWidget(QWidget):
                 border-radius: 10px;
             }}
         """)
-        
+            
         # Fecha
         due_date = self.task_data.get('due_date')
         if due_date:
@@ -208,12 +232,18 @@ class TaskWidget(QWidget):
 class TasksPanel(QWidget):
     """Panel principal de gestión de tareas con todas las funcionalidades"""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, user_id=None, parent=None):
+        super().__init__(parent)
+        self.user_id = user_id
+        
+        # Solo obtener la base de datos, NO establecer usuario aquí
+        self.db = get_database()
+        
         self.tasks = []
         self.next_id = 1
+        
         self.setup_ui()
-        self.load_sample_tasks()
+        self.load_tasks()
         
     def setup_ui(self):
         """Configurar la interfaz completa de tareas"""
@@ -314,6 +344,30 @@ class TasksPanel(QWidget):
         # Hablar resultado
         if voice_manager.available:
             voice_manager.speak(analysis)
+
+    def quick_create_reminder(self):
+        """Crear recordatorio rápido"""
+        title, ok = QInputDialog.getText(self, "Recordatorio Rápido", 
+                                       "¿Qué quieres recordar?")
+        if ok and title:
+            reminder_data = {
+                'id': self.next_id,
+            'title': title,
+            'description': '',
+            'date_time': QDateTime.currentDateTime().addSecs(300).toString("dd/MM/yyyy hh:mm"),
+            'date': QDate.currentDate().toString("yyyy-MM-dd"),
+            'time': QTime.currentTime().addSecs(300).toString("hh:mm"),
+            'priority': 'medium',  # ← CAMBIADO DE 'media' A 'medium'
+            'recurrence': 'No repetir',
+            'active': True,
+            'completed': False,
+            'sound': True,
+            'popup': True,
+            'auto_snooze': False,
+            'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+        }
+        
+        # El resto del código...
     def create_stat_widget(self, label, value, color):
         """Crear widget de estadística"""
         widget = QFrame()
@@ -467,14 +521,14 @@ class TasksPanel(QWidget):
         
         # Columna 1
         col1 = QVBoxLayout()
-        col1.addWidget(QLabel("Prioridad:"))
+        col1.addWidget(QLabel("Priority:"))
         self.task_priority = QComboBox()
-        self.task_priority.addItems(["Alta", "Media", "Baja"])
+        self.task_priority.addItems(["High", "Medium", "Low"])
         col1.addWidget(self.task_priority)
         
-        col1.addWidget(QLabel("Categoría:"))
+        col1.addWidget(QLabel("Category:"))
         self.task_category = QComboBox()
-        self.task_category.addItems(["Trabajo", "Personal", "Estudio", "Salud", "Otros"])
+        self.task_category.addItems(["Work", "Personal", "Study", "Health", "Others"])
         col1.addWidget(self.task_category)
         
         # Columna 2
@@ -616,34 +670,46 @@ class TasksPanel(QWidget):
             QMessageBox.warning(self, "Advertencia", "Por favor, ingresa un título para la tarea.")
             return
         
-        task_data = {
-            'id': self.next_id,
-            'title': title,
-            'description': self.task_desc.toPlainText().strip(),
-            'priority': self.task_priority.currentText().lower(),
-            'category': self.task_category.currentText(),
-            'due_date': self.task_due_date.date().toString("dd/MM/yyyy"),
-            'due_time': self.task_due_time.time().toString("hh:mm"),
-            'completed': False,
-            'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+        # Obtener prioridad y convertir a español para BD
+        priority_text = self.task_priority.currentText().lower()
+        
+        # Mapeo inglés → español para BD
+        priority_map_to_spanish = {
+            'high': 'alta',
+            'medium': 'media',
+            'low': 'baja'
         }
         
-        # Crear widget de tarea
-        task_widget = TaskWidget(task_data)
-        task_widget.task_updated.connect(self.update_task)
-        task_widget.task_deleted.connect(self.delete_task)
+        priority = priority_map_to_spanish.get(priority_text, 'media')
         
-        # Agregar a la lista
-        list_item = QListWidgetItem()
-        list_item.setSizeHint(QSize(0, 90))
-        self.tasks_list.addItem(list_item)
-        self.tasks_list.setItemWidget(list_item, task_widget)
+        task_data = {
+            'title': title,
+            'description': self.task_desc.toPlainText().strip(),
+            'priority': priority,  # ← En español para BD
+            'category': self.task_category.currentText(),
+            'due_date': self.task_due_date.date().toString("yyyy-MM-dd"),
+            'due_time': self.task_due_time.time().toString("hh:mm"),
+            'completed': False
+        }
         
-        # Guardar tarea
-        task_data['widget'] = task_widget
-        task_data['list_item'] = list_item
-        self.tasks.append(task_data)
-        self.next_id += 1
+        # Guardar en base de datos si hay usuario
+        if self.user_id:
+            try:
+                task_id = self.db.save_task(task_data)
+                if task_id > 0:
+                    task_data['id'] = task_id
+                    task_data['priority_display'] = priority_text  # Para mostrar en inglés
+                    self.display_new_task(task_data)
+                else:
+                    QMessageBox.warning(self, "Error", "No se pudo guardar la tarea.")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo guardar la tarea: {str(e)}")
+        else:
+            # Si no hay usuario, guardar localmente
+            task_data['id'] = self.next_id
+            task_data['priority_display'] = priority_text
+            self.next_id += 1
+            self.display_new_task(task_data)
         
         # Limpiar formulario
         self.task_title.clear()
@@ -651,50 +717,71 @@ class TasksPanel(QWidget):
         self.task_due_date.setDate(QDate.currentDate().addDays(1))
         self.task_due_time.setTime(QTime(17, 0))
         
-        # Actualizar estadísticas y vistas
+    def display_new_task(self, task_data):
+        """Mostrar nueva tarea en la lista"""
+        task_widget = TaskWidget(task_data)
+        task_widget.task_updated.connect(self.update_task)
+        task_widget.task_deleted.connect(self.delete_task)
+        
+        list_item = QListWidgetItem()
+        list_item.setSizeHint(QSize(0, 90))
+        self.tasks_list.addItem(list_item)
+        self.tasks_list.setItemWidget(list_item, task_widget)
+        
+        task_data['widget'] = task_widget
+        task_data['list_item'] = list_item
+        self.tasks.append(task_data)
+        
         self.update_stats()
         self.update_quick_view()
-        
-        QMessageBox.information(self, "Éxito", "Tarea agregada correctamente.")
     
     def quick_add_task(self):
         """Agregar tarea rápidamente"""
         title, ok = QInputDialog.getText(self, "Agregar Tarea Rápida", 
-                                       "Ingresa el título de la tarea:")
+                                    "Ingresa el título de la tarea:")
         if ok and title:
+            # Nota: 'media' ya está en español, esto está bien
             task_data = {
-                'id': self.next_id,
                 'title': title,
                 'description': '',
-                'priority': 'medium',
+                'priority': 'media',  # ← En español
                 'category': 'Personal',
-                'due_date': QDate.currentDate().toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().toString("yyyy-MM-dd"),
                 'due_time': '17:00',
                 'completed': False,
-                'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
+                'created_at': datetime.now().isoformat()
             }
             
-            task_widget = TaskWidget(task_data)
-            task_widget.task_updated.connect(self.update_task)
-            task_widget.task_deleted.connect(self.delete_task)
-            
-            list_item = QListWidgetItem()
-            list_item.setSizeHint(QSize(0, 90))
-            self.tasks_list.addItem(list_item)
-            self.tasks_list.setItemWidget(list_item, task_widget)
-            
-            task_data['widget'] = task_widget
-            task_data['list_item'] = list_item
-            self.tasks.append(task_data)
-            self.next_id += 1
-            
-            self.update_stats()
-            self.update_quick_view()
-    
+            # Usar user_id que ya fue establecido por el UserManager
+            if self.user_id:
+                try:
+                    task_id = self.db.save_task(task_data)
+                    if task_id > 0:
+                        task_data['id'] = task_id
+                        task_data['priority_display'] = 'medium'  # Para mostrar en inglés
+                        self.display_new_task(task_data)
+                    else:
+                        QMessageBox.warning(self, "Error", "No se pudo guardar la tarea.")
+                except Exception as e:
+                    QMessageBox.warning(self, "Error", f"No se pudo guardar la tarea: {str(e)}")
+            else:
+                QMessageBox.warning(self, "Error", 
+                                "No hay usuario activo. No se puede guardar la tarea.")
+        
     def update_task(self, task_data):
         """Actualizar una tarea existente"""
+        # ✅ ACTUALIZAR EN BASE DE DATOS
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                success = self.db.save_task(task_data)
+                if not success:
+                    print(f"❌ No se pudo actualizar la tarea en BD")
+            except Exception as e:
+                print(f"❌ Error actualizando tarea en BD: {e}")
+        
+        # Actualizar en lista local
         for i, task in enumerate(self.tasks):
-            if task['id'] == task_data['id']:
+            if task.get('id') == task_data.get('id'):
                 self.tasks[i] = task_data
                 break
         
@@ -703,16 +790,21 @@ class TasksPanel(QWidget):
     
     def delete_task(self, task_id):
         """Eliminar una tarea específica"""
-        for i, task in enumerate(self.tasks):
-            if task['id'] == task_id:
-                # Remover de la lista
-                row = self.tasks_list.row(task['list_item'])
-                self.tasks_list.takeItem(row)
-                
-                # Eliminar de la lista
-                del self.tasks[i]
-                break
+        # ✅ ELIMINAR DE BASE DE DATOS
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                success = self.db.delete_task(task_id)
+                if not success:
+                    QMessageBox.warning(self, "Error", "No se pudo eliminar la tarea de la base de datos.")
+                    return
+            except Exception as e:
+                print(f"❌ Error eliminando tarea de BD: {e}")
         
+        # Eliminar de lista local
+        self.tasks = [t for t in self.tasks if t.get('id') != task_id]
+        
+        # Actualizar UI
+        self.display_tasks()
         self.update_stats()
         self.update_quick_view()
     
@@ -744,20 +836,19 @@ class TasksPanel(QWidget):
                                   f"Se eliminaron {len(completed_tasks)} tareas completadas.")
     
     def update_stats(self):
-        """Actualizar todas las estadísticas"""
-        total = len(self.tasks)
-        completed = sum(1 for t in self.tasks if t['completed'])
-        pending = total - completed
-        
-        # Contar urgentes (alta prioridad y no completadas)
-        urgent = sum(1 for t in self.tasks if t['priority'] == 'high' and not t['completed'])
-        
-        # Actualizar labels
-        self.total_stat.setText(str(total))
-        self.completed_stat.setText(str(completed))
-        self.pending_stat.setText(str(pending))
-        self.urgent_stat.setText(str(urgent))
-    
+        """Actualizar estadísticas desde la base de datos"""
+        try:
+            summary = self.db.get_tasks_summary()
+            
+            # Actualizar labels
+            self.total_stat.setText(str(summary['total']))
+            self.completed_stat.setText(str(summary['completed']))
+            self.pending_stat.setText(str(summary['pending']))
+            self.urgent_stat.setText(str(summary['high_priority']))
+            
+        except Exception as e:
+            print(f"❌ Error actualizando estadísticas: {e}")
+
     def update_quick_view(self):
         """Actualizar vista rápida de próximas tareas"""
         self.quick_tasks_list.clear()
@@ -780,57 +871,75 @@ class TasksPanel(QWidget):
             {
                 'title': 'Completar informe mensual',
                 'description': 'Revisar datos y generar gráficos para la presentación del equipo',
-                'priority': 'high',
+                'priority': 'high',  # ← CAMBIADO
                 'category': 'Trabajo',
-                'due_date': QDate.currentDate().addDays(2).toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().addDays(2).toString("yyyy-MM-dd"),
                 'due_time': '18:00',
-                'completed': False
+                'completed': False,
+                'priority_display': 'high'  # Para mostrar en UI
             },
             {
                 'title': 'Ir al supermercado',
                 'description': 'Comprar leche, huevos, pan, frutas y verduras',
-                'priority': 'medium',
+                'priority': 'medium',  # ← CAMBIADO
                 'category': 'Personal',
-                'due_date': QDate.currentDate().toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().toString("yyyy-MM-dd"),
                 'due_time': '19:00',
-                'completed': True
+                'completed': False,
+                'priority_display': 'medium'  # Para mostrar en UI
             },
             {
                 'title': 'Estudiar para el examen final',
                 'description': 'Repasar capítulos 5-8 del libro de texto y hacer ejercicios',
-                'priority': 'high',
+                'priority': 'high',  # ← CAMBIADO
                 'category': 'Estudio',
-                'due_date': QDate.currentDate().addDays(5).toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().addDays(5).toString("yyyy-MM-dd"),
                 'due_time': '20:00',
-                'completed': False
+                'completed': False,
+                'priority_display': 'high'  # Para mostrar en UI
             },
             {
                 'title': 'Llamar al médico para cita',
                 'description': 'Pedir cita para revisión anual y chequeo general',
-                'priority': 'low',
+                'priority': 'low',  # ← CAMBIADO
                 'category': 'Salud',
-                'due_date': QDate.currentDate().addDays(3).toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().addDays(3).toString("yyyy-MM-dd"),
                 'due_time': '10:00',
-                'completed': False
+                'completed': False,
+                'priority_display': 'low'  # Para mostrar en UI
             },
             {
                 'title': 'Preparar presentación para reunión',
                 'description': 'Crear slides y preparar discurso para la reunión del jueves',
-                'priority': 'medium',
+                'priority': 'medium',  # ← CAMBIADO
                 'category': 'Trabajo',
-                'due_date': QDate.currentDate().addDays(1).toString("dd/MM/yyyy"),
+                'due_date': QDate.currentDate().addDays(1).toString("yyyy-MM-dd"),
                 'due_time': '15:00',
                 'completed': False
             }
         ]
+    
+    def load_tasks(self):
+        """Cargar tareas desde la base de datos"""
+        try:
+            if self.user_id:
+                self.tasks = self.db.get_tasks()
+                self.display_tasks()
+                self.update_stats()
+                self.update_quick_view()
+            else:
+                # Modo sin usuario - cargar tareas de ejemplo
+                self.load_sample_tasks()
+        except Exception as e:
+            print(f"❌ Error cargando tareas desde BD: {e}")
+            self.tasks = []
+            self.load_sample_tasks() 
+    
+    def display_tasks(self):
+        """Mostrar tareas en la lista"""
+        self.tasks_list.clear()
         
-        for task_data in sample_tasks:
-            task = {
-                'id': self.next_id,
-                **task_data,
-                'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
-            }
-            
+        for task in self.tasks:
             task_widget = TaskWidget(task)
             task_widget.task_updated.connect(self.update_task)
             task_widget.task_deleted.connect(self.delete_task)
@@ -839,11 +948,3 @@ class TasksPanel(QWidget):
             list_item.setSizeHint(QSize(0, 90))
             self.tasks_list.addItem(list_item)
             self.tasks_list.setItemWidget(list_item, task_widget)
-            
-            task['widget'] = task_widget
-            task['list_item'] = list_item
-            self.tasks.append(task)
-            self.next_id += 1
-        
-        self.update_stats()
-        self.update_quick_view()

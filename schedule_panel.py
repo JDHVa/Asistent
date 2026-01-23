@@ -29,6 +29,8 @@ from PySide6.QtGui import (
 )
 import json
 from datetime import datetime, timedelta
+from database_manager import get_database
+
 from export_data import export_tasks, export_events, export_reminders
 class EventWidget(QWidget):
     """Widget para mostrar un evento en la lista"""
@@ -170,14 +172,24 @@ class EventWidget(QWidget):
 class SchedulePanel(QWidget):
     """Panel completo de horario y calendario"""
     
-    def __init__(self):
-        super().__init__()
+class SchedulePanel(QWidget):
+    """Panel completo de horario y calendario"""
+    
+    def __init__(self, user_id=None, parent=None):
+        super().__init__(parent)
+        self.user_id = user_id
+        self.db = get_database()
+        
+        # Establecer usuario actual si se proporciona
+        if user_id:
+            self.db.set_current_user(user_id)
+        
         self.events = []
         self.next_id = 1
         self.current_view = 'month'  # 'month', 'week', 'day'
         
         self.setup_ui()
-        self.load_sample_events()
+        self.load_events()
         
     def setup_ui(self):
         """Configurar interfaz completa"""
@@ -735,7 +747,6 @@ class SchedulePanel(QWidget):
             return
         
         event_data = {
-            'id': self.next_id,
             'title': title,
             'location': self.event_location.text().strip(),
             'description': self.event_description.toPlainText().strip(),
@@ -747,36 +758,80 @@ class SchedulePanel(QWidget):
             'created_at': QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
         }
         
-        # Crear widget de evento
-        event_widget = EventWidget(event_data)
-        event_widget.event_updated.connect(self.update_event)
-        event_widget.event_deleted.connect(self.delete_event)
-        
-        # Agregar a lista principal
-        list_item = QListWidgetItem()
-        list_item.setSizeHint(QSize(0, 70))
-        self.events_list.addItem(list_item)
-        self.events_list.setItemWidget(list_item, event_widget)
-        
-        # Guardar evento
-        event_data['widget'] = event_widget
-        event_data['list_item'] = list_item
-        self.events.append(event_data)
-        self.next_id += 1
-        
-        # Limpiar formulario
-        self.event_title.clear()
-        self.event_location.clear()
-        self.event_description.clear()
-        self.event_date.setDate(QDate.currentDate())
-        self.event_start_time.setTime(QTime(9, 0))
-        self.event_end_time.setTime(QTime(10, 0))
-        
-        # Actualizar vistas
-        self.update_stats()
-        self.update_daily_events()
-        
-        QMessageBox.information(self, "Éxito", "Evento agregado correctamente.")
+        # ✅ GUARDAR EN BASE DE DATOS
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                event_id = self.db.save_event(event_data)
+                if event_id > 0:
+                    event_data['id'] = event_id
+                    
+                    # Crear widget de evento
+                    event_widget = EventWidget(event_data)
+                    event_widget.event_updated.connect(self.update_event)
+                    event_widget.event_deleted.connect(self.delete_event)
+                    
+                    # Agregar a lista principal
+                    list_item = QListWidgetItem()
+                    list_item.setSizeHint(QSize(0, 70))
+                    self.events_list.addItem(list_item)
+                    self.events_list.setItemWidget(list_item, event_widget)
+                    
+                    # Guardar evento localmente
+                    event_data['widget'] = event_widget
+                    event_data['list_item'] = list_item
+                    self.events.append(event_data)
+                    
+                    # Limpiar formulario
+                    self.event_title.clear()
+                    self.event_location.clear()
+                    self.event_description.clear()
+                    self.event_date.setDate(QDate.currentDate())
+                    self.event_start_time.setTime(QTime(9, 0))
+                    self.event_end_time.setTime(QTime(10, 0))
+                    
+                    # Actualizar vistas
+                    self.update_stats()
+                    self.update_daily_events()
+                    
+                    QMessageBox.information(self, "Éxito", "Evento agregado correctamente.")
+                else:
+                    QMessageBox.warning(self, "Error", "No se pudo guardar el evento.")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo guardar el evento: {str(e)}")
+        else:
+            # Modo sin base de datos
+            event_data['id'] = self.next_id
+            
+            # Crear widget de evento
+            event_widget = EventWidget(event_data)
+            event_widget.event_updated.connect(self.update_event)
+            event_widget.event_deleted.connect(self.delete_event)
+            
+            # Agregar a lista principal
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 70))
+            self.events_list.addItem(list_item)
+            self.events_list.setItemWidget(list_item, event_widget)
+            
+            # Guardar evento localmente
+            event_data['widget'] = event_widget
+            event_data['list_item'] = list_item
+            self.events.append(event_data)
+            self.next_id += 1
+            
+            # Limpiar formulario
+            self.event_title.clear()
+            self.event_location.clear()
+            self.event_description.clear()
+            self.event_date.setDate(QDate.currentDate())
+            self.event_start_time.setTime(QTime(9, 0))
+            self.event_end_time.setTime(QTime(10, 0))
+            
+            # Actualizar vistas
+            self.update_stats()
+            self.update_daily_events()
+            
+            QMessageBox.information(self, "Éxito", "Evento agregado correctamente.")
     
     def get_color_code(self, color_name):
         """Obtener código hexadecimal del color"""
@@ -792,6 +847,16 @@ class SchedulePanel(QWidget):
     
     def update_event(self, event_data):
         """Actualizar evento"""
+        # ✅ ACTUALIZAR EN BASE DE DATOS
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                success = self.db.save_event(event_data)
+                if not success:
+                    print(f"❌ No se pudo actualizar el evento en BD")
+            except Exception as e:
+                print(f"❌ Error actualizando evento en BD: {e}")
+        
+        # Actualizar localmente
         for i, event in enumerate(self.events):
             if event['id'] == event_data['id']:
                 self.events[i] = event_data
@@ -802,6 +867,16 @@ class SchedulePanel(QWidget):
     
     def delete_event(self, event_id):
         """Eliminar evento"""
+        # ✅ ELIMINAR DE BASE DE DATOS
+        if self.user_id and hasattr(self, 'db') and self.db:
+            try:
+                success = self.db.delete_event(event_id)
+                if not success:
+                    print(f"❌ No se pudo eliminar el evento de BD")
+            except Exception as e:
+                print(f"❌ Error eliminando evento de BD: {e}")
+        
+        # Eliminar localmente
         for i, event in enumerate(self.events):
             if event['id'] == event_id:
                 # Remover de lista
@@ -913,6 +988,56 @@ class SchedulePanel(QWidget):
     def filter_events(self, filter_text):
         """Filtrar eventos"""
         print(f"Filtrar por: {filter_text}")
+    def display_events(self):
+        """Mostrar eventos en la lista"""
+        self.events_list.clear()
+        
+        for event in self.events:
+            # Crear widget de evento
+            event_widget = EventWidget(event)
+            event_widget.event_updated.connect(self.update_event)
+            event_widget.event_deleted.connect(self.delete_event)
+            
+            # Agregar a la lista
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 70))
+            self.events_list.addItem(list_item)
+            self.events_list.setItemWidget(list_item, event_widget)
+
+    # En schedule_panel.py, modificar load_events:
+
+    def load_events(self):
+        """Cargar eventos desde la base de datos"""
+        try:
+            if self.user_id:
+                # Asegurar que db existe
+                if not hasattr(self, 'db') or not self.db:
+                    self.db = get_database()
+                    if self.user_id:
+                        self.db.set_current_user(self.user_id)
+                
+                self.events = self.db.get_events()
+                
+                # Asegurar que display_events existe
+                if hasattr(self, 'display_events'):
+                    self.display_events()
+                else:
+                    # Si no existe, crear uno básico
+                    self.display_events = self.create_display_events_fallback()
+                    self.display_events()
+                
+                if hasattr(self, 'update_stats'):
+                    self.update_stats()
+                if hasattr(self, 'update_daily_events'):
+                    self.update_daily_events()
+                    
+            else:
+                self.load_sample_events()
+                
+        except Exception as e:
+            print(f"❌ Error cargando eventos desde BD: {e}")
+            self.events = []
+            self.load_sample_events()
     
     def load_sample_events(self):
         """Cargar eventos de ejemplo"""
