@@ -22,18 +22,28 @@ sys.path.append(current_dir)
 try:
     from database_manager import get_database
     from user_manager import get_user_manager, get_current_user_info
+    
+    # Inicializar base de datos primero
+    db = get_database()  # Esto crea e inicializa la base de datos
     DATABASE_AVAILABLE = True
+    print("✅ Módulos de base de datos importados correctamente")
+    
 except ImportError as e:
     print(f"⚠️ No se pudo importar sistema de base de datos: {e}")
     DATABASE_AVAILABLE = False
+    
     # Funciones dummy para cuando no hay base de datos
     def get_database():
         return None
+    
     def get_user_manager():
         return None
+    
     def get_current_user_info():
         return {"name": "Invitado", "user_id": "guest_0000"}
-
+except Exception as e:
+    print(f"⚠️ Error inicializando base de datos: {e}")
+    DATABASE_AVAILABLE = False
 # Importar el asistente global
 try:
     from global_assistant import get_global_assistant
@@ -224,65 +234,211 @@ class MainWindow(QMainWindow):
         
         print("🚀 Iniciando Asistente Personal...")
         
-        # Inicializar gestor de usuarios y base de datos
-        if DATABASE_AVAILABLE:
-            self.user_manager = get_user_manager()
-            self.db = get_database()
-            
-            # Si se proporcionó user_id, usarlo
-            if user_id:
-                self.user_id = user_id
-                
-                # Si se proporcionó username, usarlo; de lo contrario generar uno
-                if username:
-                    self.username = username
-                else:
-                    # Extraer nombre del user_id
-                    self.username = user_id.replace('user_', '').replace('_', ' ').title()
-                
-                # Crear user_data
-                self.user_data = {
-                    "name": self.username,
-                    "user_id": user_id
-                }
-                
-                print(f"✅ Usando usuario proporcionado: {self.username} (ID: {self.user_id})")
-            else:
-                # Auto-login (comportamiento original)
-                self.user_id = self.user_manager.auto_login()
-                self.user_data = get_current_user_info() or {}
-                self.username = self.user_data.get('name', 'Usuario')
-        else:
-            # Modo sin base de datos
-            if user_id:
-                self.user_id = user_id
-                self.username = username if username else user_id.replace('user_', '').replace('_', ' ').title()
-            else:
-                self.user_id = "guest_0000"
-                self.username = "Invitado"
-            
-            self.user_data = {"name": self.username, "user_id": self.user_id}
-            print(f"⚠️ Modo sin base de datos - Usando: {self.username}")
+        # Inicializar gestor de usuarios
+        self.user_manager = get_user_manager()
         
+        # Manejo de usuario con fallbacks robustos
+        try:
+            if DATABASE_AVAILABLE:
+                if user_id:
+                    print(f"🔧 Usuario recibido: {user_id}")
+                    
+                    # Usar el gestor de usuarios para crear/establecer usuario
+                    actual_user_id = self.user_manager.create_or_get_user(user_id, username)
+                    self.user_id = actual_user_id
+                    
+                    # Obtener información actualizada del usuario
+                    user_info = self.user_manager.get_current_user()
+                    if user_info:
+                        self.username = user_info.get('name', username or 'Usuario')
+                        self.user_data = dict(user_info)
+                        print(f"✅ Usuario cargado desde BD: {self.username}")
+                    else:
+                        self.username = username or user_id.replace('user_', '').replace('_', ' ').title()
+                        self.user_data = {"name": self.username, "user_id": self.user_id}
+                        print(f"⚠️ Usuario creado nuevo: {self.username}")
+                    
+                else:
+                    # Auto-login (comportamiento original)
+                    self.user_id = self.user_manager.auto_login()
+                    user_info = self.user_manager.get_current_user()
+                    
+                    if user_info:
+                        self.user_data = dict(user_info)
+                        self.username = self.user_data.get('name', 'Usuario')
+                    else:
+                        self.username = "Usuario"
+                        self.user_data = {"name": self.username, "user_id": self.user_id}
+                    
+                    print(f"✅ Auto-login completado: {self.username}")
+                
+            else:
+                # Modo sin base de datos
+                print("⚠️ Modo sin base de datos activado")
+                if user_id:
+                    self.user_id = user_id
+                    self.username = username if username else user_id.replace('user_', '').replace('_', ' ').title()
+                else:
+                    self.user_id = "guest_0000"
+                    self.username = "Invitado"
+                
+                self.user_data = {"name": self.username, "user_id": self.user_id}
+                print(f"⚠️ Usando usuario temporal: {self.username}")
+                
+        except Exception as e:
+            print(f"❌ Error crítico en inicialización de usuario: {e}")
+            # Fallback absoluto
+            self.user_id = "emergency_guest"
+            self.username = "Invitado"
+            self.user_data = {"name": self.username, "user_id": self.user_id}
+            print(f"⚠️ Usando usuario de emergencia: {self.username}")
+        
+        # Inicializar base de datos SIEMPRE (aunque esté en modo fallback)
+        try:
+            self.db = get_database()
+            print("✅ Base de datos inicializada")
+            
+            # Establecer usuario en la base de datos
+            if self.user_id and self.db:
+                self.db.set_current_user(self.user_id)
+                print(f"✅ Usuario establecido en BD: {self.user_id}")
+                
+        except Exception as e:
+            print(f"❌ Error inicializando base de datos: {e}")
+            self.db = None
+
         print(f"🔧 Iniciando para usuario: {self.username} (ID: {self.user_id})")
         
-        # Inicializar asistente global CON EL NOMBRE
-        if ASSISTANT_AVAILABLE:
-            from global_assistant import get_global_assistant
-            self.global_assistant = get_global_assistant(self.username)  # ← Pasar nombre aquí
-            if self.global_assistant:
-                self.setup_assistant_callbacks()
-                self.setup_assistant_connections()
-                print(f"✅ Asistente global inicializado para: {self.username}")
-            else:
-                print("⚠️ Asistente global no disponible")
-                self.global_assistant = None
+        # Inicializar asistente global CON EL NOMBRE REAL
+        try:
+            if ASSISTANT_AVAILABLE:
+                from global_assistant import get_global_assistant
+                
+                # Usar el nombre REAL del usuario, no el ID
+                actual_name = self.user_data.get('name', self.username)
+                self.global_assistant = get_global_assistant(actual_name)
+                
+                if self.global_assistant:
+                    self.setup_assistant_callbacks()
+                    self.setup_assistant_connections()
+                    print(f"✅ Asistente global inicializado para: {actual_name}")
+                else:
+                    print("⚠️ Asistente global no disponible")
+                    self.global_assistant = None
+        except Exception as e:
+            print(f"❌ Error inicializando asistente global: {e}")
+            self.global_assistant = None
         
-        self.setup_window()
-        self.setup_ui()
-        self.setup_tray_icon()
-        self.apply_styles()
+        # Configurar ventana e interfaz
+        try:
+            self.setup_window()
+            self.setup_ui()
+            self.setup_tray_icon()
+            self.apply_styles()
+            print("✅ Interfaz configurada exitosamente")
+        except Exception as e:
+            print(f"❌ Error crítico configurando interfaz: {e}")
+            import traceback
+            traceback.print_exc()
+            # Aún así mostrar la ventana con error mínimo
+            self.setup_minimal_ui()
+            # Verificación final del estado
+        print("\n" + "=" * 60)
+        print("📊 RESUMEN DE INICIALIZACIÓN:")
+        print(f"👤 Usuario: {self.username}")
+        print(f"🔑 ID: {self.user_id}")
+        print(f"📁 User Data: {self.user_data}")
+        print(f"🗄️  Base de datos: {'✅ Disponible' if self.db else '❌ No disponible'}")
+        print(f"🤖 Asistente: {'✅ Inicializado' if self.global_assistant else '❌ No disponible'}")
+        print("=" * 60 + "\n")
+    
+    def setup_minimal_ui(self):
+        """Configurar interfaz mínima en caso de error"""
+        self.setWindowTitle("Asistente Personal - Modo de Recuperación")
+        self.setMinimumSize(800, 600)
         
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+        
+        error_label = QLabel("⚠️ La interfaz principal no pudo cargarse completamente.")
+        error_label.setStyleSheet("color: #ea4335; font-size: 16px; font-weight: bold;")
+        error_label.setAlignment(Qt.AlignCenter)
+        
+        user_label = QLabel(f"Usuario: {self.username}")
+        user_label.setAlignment(Qt.AlignCenter)
+        
+        layout.addStretch()
+        layout.addWidget(error_label)
+        layout.addWidget(user_label)
+        layout.addStretch()
+        
+        self.setCentralWidget(central_widget)
+    
+    def setup_window(self):
+        """Configuración básica de la ventana"""
+        self.setWindowTitle(f"Asistente Personal - {self.username}")
+        self.setMinimumSize(1100, 750)
+        
+        # Para ventana sin bordes nativos
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        
+        # Para permitir sombras y efectos
+        self.setAttribute(Qt.WA_TranslucentBackground)
+    
+    def setup_assistant_callbacks(self):
+        """Configurar callbacks para que el asistente acceda a los datos"""
+        if not self.global_assistant:
+            return
+        
+        # Obtener información ACTUAL del usuario
+        user_name = self.user_data.get('name', self.username)
+        
+        print(f"🔧 Configurando callbacks para usuario: {user_name}")
+        
+        callbacks = {
+            'get_current_panel': self.get_current_panel,
+            'get_tasks': self.get_current_tasks,
+            'get_events': self.get_current_events,
+            'get_reminders': self.get_current_reminders,
+            'user_name': user_name,
+            'user_id': self.user_id,
+            'db': self.db if hasattr(self, 'db') else None
+        }
+        
+        self.global_assistant.register_callbacks(callbacks)
+        
+        # También actualizar el nombre directamente en los componentes del asistente
+        if hasattr(self.global_assistant, 'user_name'):
+            self.global_assistant.user_name = user_name
+        
+        # Si hay un componente Gemini dentro del asistente
+        if hasattr(self.global_assistant, 'gemini'):
+            if hasattr(self.global_assistant.gemini, 'user_name'):
+                self.global_assistant.gemini.user_name = user_name
+            # También podemos pasar el user_id al gemini si es necesario
+            if hasattr(self.global_assistant.gemini, 'user_id'):
+                self.global_assistant.gemini.user_id = self.user_id
+    
+    def setup_assistant_connections(self):
+        """Conectar señales del asistente global"""
+        if not self.global_assistant:
+            return
+        
+        try:
+            if hasattr(self.global_assistant, 'command_received'):
+                self.global_assistant.command_received.connect(self.on_assistant_command)
+            
+            if hasattr(self.global_assistant, 'response_ready'):
+                self.global_assistant.response_ready.connect(self.on_assistant_response)
+            
+            if hasattr(self.global_assistant, 'error_occurred'):
+                self.global_assistant.error_occurred.connect(self.on_assistant_error)
+                
+            print("✅ Conexiones del asistente configuradas")
+        except Exception as e:
+            print(f"⚠️ Error configurando conexiones del asistente: {e}")
+
+
     def setup_assistant_callbacks(self):
         """Configurar callbacks para que el asistente acceda a los datos"""
         if not self.global_assistant:

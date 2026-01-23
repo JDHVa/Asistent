@@ -1,19 +1,14 @@
-# database_manager.py
 import sqlite3
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-import hashlib
-import uuid
 
 class DatabaseManager:
-    """Gestor de base de datos SQLite con identidad única por usuario"""
+    """Gestor de base de datos SQLite con todo en inglés"""
     
     def __init__(self, db_path: str = None):
-        """Inicializar base de datos"""
         if db_path is None:
-            # Directorio por defecto
             current_dir = os.path.dirname(os.path.abspath(__file__))
             db_dir = os.path.join(current_dir, "..", "data", "database")
             os.makedirs(db_dir, exist_ok=True)
@@ -37,11 +32,11 @@ class DatabaseManager:
             self.connection = None
     
     def setup_database(self):
-        """Crear tablas si no existen"""
+        """Crear tablas si no existen - TODO EN INGLÉS"""
         conn = self.connect()
         cursor = conn.cursor()
         
-        # Tabla de usuarios (identidad única)
+        # Tabla de usuarios
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,21 +49,22 @@ class DatabaseManager:
             )
         ''')
         
-        # Tabla de tareas
+        # Tabla de tareas - EN INGLÉS
+            # Para la tabla tasks
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
+                user_id TEXT,
                 title TEXT NOT NULL,
                 description TEXT,
-                priority TEXT CHECK(priority IN ('alta', 'media', 'baja')) DEFAULT 'media',
+                priority TEXT CHECK(priority IN ('alta', 'media', 'baja', 'high', 'medium', 'low')),
                 category TEXT,
                 due_date TEXT,
                 due_time TEXT,
-                completed BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                completed INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
         
@@ -91,30 +87,30 @@ class DatabaseManager:
             )
         ''')
         
-        # Tabla de recordatorios
+        # Para la tabla reminders
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reminders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
+                user_id TEXT,
                 title TEXT NOT NULL,
                 description TEXT,
-                date_time TEXT,
                 date TEXT,
                 time TEXT,
-                priority TEXT CHECK(priority IN ('alta', 'media', 'baja')) DEFAULT 'media',
-                recurrence TEXT DEFAULT 'ninguna',
-                active BOOLEAN DEFAULT 1,
-                completed BOOLEAN DEFAULT 0,
-                sound BOOLEAN DEFAULT 1,
-                popup BOOLEAN DEFAULT 1,
-                auto_snooze BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id)
+                date_time TEXT,
+                priority TEXT CHECK(priority IN ('alta', 'media', 'baja', 'high', 'medium', 'low')),
+                recurrence TEXT,
+                active INTEGER DEFAULT 1,
+                completed INTEGER DEFAULT 0,
+                sound INTEGER DEFAULT 1,
+                popup INTEGER DEFAULT 1,
+                auto_snooze INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
         
-        # Tabla de conversaciones (para el chat)
+        # Tabla de conversaciones
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,7 +122,7 @@ class DatabaseManager:
             )
         ''')
         
-        # Tabla de configuraciones por usuario
+        # Tabla de configuraciones
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS user_settings (
                 user_id TEXT PRIMARY KEY,
@@ -142,9 +138,32 @@ class DatabaseManager:
         
         conn.commit()
         self.close()
-        print(f"✅ Base de datos inicializada en: {self.db_path}")
-    
+        print(f"✅ Base de datos inicializada (inglés): {self.db_path}")
+
     # ===== MÉTODOS DE USUARIO =====
+    def delete_reminder(self, reminder_id: int, user_id: str = None) -> bool:
+        """Eliminar un recordatorio"""
+        if user_id is None:
+            user_id = self.current_user_id
+        
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                DELETE FROM reminders 
+                WHERE id = ? AND user_id = ?
+            ''', (reminder_id, user_id))
+            
+            conn.commit()
+            return cursor.rowcount > 0
+            
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error eliminando recordatorio: {e}")
+            return False
+        finally:
+            self.close()
     
     def create_user(self, user_id: str, name: str = None, email: str = None) -> str:
         """Crear un nuevo usuario con ID único"""
@@ -302,7 +321,7 @@ class DatabaseManager:
     # ===== MÉTODOS DE TAREAS =====
     
     def save_task(self, task_data: Dict, user_id: str = None) -> int:
-        """Guardar una tarea (crear o actualizar)"""
+        """Guardar una tarea (crear o actualizar) - SIN CONVERSIONES"""
         if user_id is None:
             user_id = self.current_user_id
         
@@ -312,19 +331,23 @@ class DatabaseManager:
         conn = self.connect()
         cursor = conn.cursor()
         
-        # Convertir prioridad de español a inglés
-        priority_map = {
-            'alta': 'high',
-            'media': 'medium',
-            'baja': 'low'
-        }
-    
-        original_priority = task_data.get('priority', 'media').lower()
-        task_data['priority'] = priority_map.get(original_priority, 'medium')
         try:
+            # Asegurar prioridad en inglés
+            priority = task_data.get('priority', 'medium').lower()
+            if priority not in ['high', 'medium', 'low']:
+                # Mapeo automático si viene en español
+                priority_map = {
+                    'alta': 'high',
+                    'media': 'medium', 
+                    'baja': 'low'
+                }
+                priority = priority_map.get(priority, 'medium')
+            
+            print(f"DEBUG: Guardando tarea con prioridad: {priority}")
+            
             task_id = task_data.get('id')
             
-            if task_id:  # Actualizar tarea existente
+            if task_id:  # Actualizar
                 cursor.execute('''
                     UPDATE tasks SET
                         title = ?,
@@ -339,7 +362,7 @@ class DatabaseManager:
                 ''', (
                     task_data['title'],
                     task_data.get('description', ''),
-                    task_data.get('priority', 'medium'),
+                    priority,
                     task_data.get('category', ''),
                     task_data.get('due_date'),
                     task_data.get('due_time'),
@@ -347,7 +370,7 @@ class DatabaseManager:
                     task_id,
                     user_id
                 ))
-            else:  # Crear nueva tarea
+            else:  # Crear nueva
                 cursor.execute('''
                     INSERT INTO tasks (
                         user_id, title, description, priority, 
@@ -357,7 +380,7 @@ class DatabaseManager:
                     user_id,
                     task_data['title'],
                     task_data.get('description', ''),
-                    task_data.get('priority', 'medium'),
+                    priority,
                     task_data.get('category', ''),
                     task_data.get('due_date'),
                     task_data.get('due_time'),
@@ -371,10 +394,13 @@ class DatabaseManager:
         except Exception as e:
             conn.rollback()
             print(f"❌ Error guardando tarea: {e}")
+            import traceback
+            traceback.print_exc()
             return -1
         finally:
             self.close()
     
+
     def get_tasks(self, user_id: str = None, filters: Dict = None) -> List[Dict]:
         """Obtener tareas del usuario"""
         if user_id is None:
@@ -612,23 +638,27 @@ class DatabaseManager:
     # ===== MÉTODOS DE RECORDATORIOS =====
     
     def save_reminder(self, reminder_data: Dict, user_id: str = None) -> int:
-        """Guardar un recordatorio"""
+        """Guardar un recordatorio - SIN CONVERSIONES"""
         if user_id is None:
             user_id = self.current_user_id
         
         conn = self.connect()
         cursor = conn.cursor()
         
-        # Convertir prioridad de español a inglés
-        priority_map = {
-            'alta': 'high',
-            'media': 'medium',
-            'baja': 'low'
-        }
-    
-        original_priority = task_data.get('priority', 'media').lower()
-        task_data['priority'] = priority_map.get(original_priority, 'medium')
         try:
+            # Asegurar prioridad en inglés
+            priority = reminder_data.get('priority', 'medium').lower()
+            if priority not in ['high', 'medium', 'low']:
+                # Mapeo automático si viene en español
+                priority_map = {
+                    'alta': 'high',
+                    'media': 'medium', 
+                    'baja': 'low'
+                }
+                priority = priority_map.get(priority, 'medium')
+            
+            print(f"DEBUG: Guardando recordatorio con prioridad: {priority}")
+            
             reminder_id = reminder_data.get('id')
             
             if reminder_id:  # Actualizar
@@ -654,8 +684,8 @@ class DatabaseManager:
                     reminder_data.get('date_time', ''),
                     reminder_data.get('date', ''),
                     reminder_data.get('time', ''),
-                    reminder_data.get('priority', 'media'),
-                    reminder_data.get('recurrence', 'ninguna'),
+                    priority,
+                    reminder_data.get('recurrence', 'none'),
                     1 if reminder_data.get('active', True) else 0,
                     1 if reminder_data.get('completed', False) else 0,
                     1 if reminder_data.get('sound', True) else 0,
@@ -678,8 +708,8 @@ class DatabaseManager:
                     reminder_data.get('date_time', ''),
                     reminder_data.get('date', ''),
                     reminder_data.get('time', ''),
-                    reminder_data.get('priority', 'media'),
-                    reminder_data.get('recurrence', 'ninguna'),
+                    priority,
+                    reminder_data.get('recurrence', 'none'),
                     1 if reminder_data.get('active', True) else 0,
                     1 if reminder_data.get('completed', False) else 0,
                     1 if reminder_data.get('sound', True) else 0,
@@ -694,10 +724,12 @@ class DatabaseManager:
         except Exception as e:
             conn.rollback()
             print(f"❌ Error guardando recordatorio: {e}")
+            import traceback
+            traceback.print_exc()
             return -1
         finally:
             self.close()
-    
+              
     def get_reminders(self, user_id: str = None, filters: Dict = None) -> List[Dict]:
         """Obtener recordatorios del usuario"""
         if user_id is None:
