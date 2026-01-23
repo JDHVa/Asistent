@@ -35,7 +35,7 @@ class GeminiManager:
     """Gestor para interactuar con Gemini AI"""
     
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyAm9tYSXoKQfqIBGb_5bWJXcu6r0-Oridk")
+        self.api_key = os.getenv("GEMINI_API_KEY", "APIKEY")
         self.model = None
         self.conversation_history = []
         self.initialize_gemini()
@@ -338,4 +338,5 @@ class VoiceManager:
 
 # Instancias globales
 gemini_manager = GeminiManager()
+
 voice_manager = VoiceManager()
