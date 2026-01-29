@@ -1,4 +1,3 @@
-# global_assistant.py (versión actualizada)
 import sys
 import os
 import json
@@ -13,14 +12,11 @@ import pyttsx3
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# Importar base de datos
 try:
     from database_manager import get_database
 except ImportError:
-    # Para pruebas
     pass
 
-# Cargar variables de entorno
 load_dotenv()
 
 class GlobalDataManager:
@@ -31,7 +27,6 @@ class GlobalDataManager:
         self.data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
         self.ensure_data_directory()
         
-        # Conexión a base de datos
         self.db = None
         if user_id:
             self.connect_database()
@@ -44,34 +39,29 @@ class GlobalDataManager:
         }
     
     def connect_database(self):
-        """Conectar a la base de datos"""
         try:
             self.db = get_database()
             if self.user_id:
                 self.db.set_current_user(self.user_id)
-            print(f"✅ Base de datos conectada para usuario: {self.user_id}")
+            print(f"Base de datos conectada para usuario: {self.user_id}")
             return True
         except Exception as e:
-            print(f"❌ Error conectando a BD: {e}")
+            print(f"Error conectando a BD: {e}")
             return False
     
     def set_user_id(self, user_id):
-        """Establecer ID de usuario"""
         self.user_id = user_id
         if self.db:
             self.db.set_current_user(user_id)
     
     def ensure_data_directory(self):
-        """Asegurar que existe el directorio de datos"""
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
     
     def register_callbacks(self, callbacks):
-        """Registrar callbacks para obtener datos de los paneles"""
         self.callbacks.update(callbacks)
     
     def get_current_time_info(self):
-        """Obtener información de tiempo actual"""
         now = datetime.now()
         return {
             "date": now.strftime("%d/%m/%Y"),
@@ -79,12 +69,11 @@ class GlobalDataManager:
             "day_name": now.strftime("%A"),
             "hour": now.hour,
             "minute": now.minute,
-            "weekday": now.weekday(),  # 0=Lunes, 6=Domingo
+            "weekday": now.weekday(), 
             "is_weekend": now.weekday() >= 5
         }
     
     def get_context_data(self):
-        """Obtener datos de contexto desde los paneles y base de datos"""
         context = {
             "current_time": self.get_current_time_info(),
             "current_panel": "Desconocido",
@@ -92,16 +81,13 @@ class GlobalDataManager:
             "has_database": self.db is not None
         }
         
-        # Intentar obtener datos de la base de datos
         database_data = self.get_database_context()
         context.update(database_data)
         
-        # Intentar obtener datos mediante callbacks (para datos en tiempo real)
         try:
             if self.callbacks['get_current_panel']:
                 context["current_panel"] = self.callbacks['get_current_panel']()
             
-            # Si los callbacks están disponibles, complementar con datos en tiempo real
             if self.callbacks['get_tasks']:
                 try:
                     tasks = self.callbacks['get_tasks']()
@@ -127,12 +113,12 @@ class GlobalDataManager:
                     pass
                 
         except Exception as e:
-            print(f"⚠️ Error obteniendo contexto de callbacks: {e}")
+            print(f"Error obteniendo contexto de callbacks: {e}")
         
         return context
     
     def get_database_context(self):
-        """Obtener datos de contexto desde la base de datos"""
+
         database_context = {
             "database_tasks": [],
             "database_events": [],
@@ -144,11 +130,9 @@ class GlobalDataManager:
             return database_context
         
         try:
-            # Obtener fecha actual y próximos 7 días
             today = datetime.now().strftime('%Y-%m-%d')
             next_week = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
             
-            # Obtener tareas pendientes
             try:
                 tasks = self.db.get_tasks()
                 if tasks:
@@ -163,9 +147,8 @@ class GlobalDataManager:
                         "pending_list": pending_tasks[:5]
                     }
             except Exception as e:
-                print(f"⚠️ Error obteniendo tareas de BD: {e}")
+                print(f"Error obteniendo tareas de BD: {e}")
             
-            # Obtener eventos próximos
             try:
                 events = self.db.get_events(today, next_week)
                 if events:
@@ -175,9 +158,8 @@ class GlobalDataManager:
                         "upcoming": events[:5]
                     }
             except Exception as e:
-                print(f"⚠️ Error obteniendo eventos de BD: {e}")
+                print(f"Error obteniendo eventos de BD: {e}")
             
-            # Obtener recordatorios activos
             try:
                 reminders = self.db.get_reminders()
                 if reminders:
@@ -189,7 +171,7 @@ class GlobalDataManager:
                         "active_list": active_reminders[:5]
                     }
             except Exception as e:
-                print(f"⚠️ Error obteniendo recordatorios de BD: {e}")
+                print(f"Error obteniendo recordatorios de BD: {e}")
             
             database_context["database_has_data"] = (
                 len(database_context["database_tasks"]) > 0 or
@@ -198,12 +180,11 @@ class GlobalDataManager:
             )
             
         except Exception as e:
-            print(f"⚠️ Error general obteniendo contexto de BD: {e}")
+            print(f"Error general obteniendo contexto de BD: {e}")
         
         return database_context
     
     def get_user_info(self):
-        """Obtener información del usuario desde la base de datos"""
         if not self.db or not self.user_id:
             return {"name": "Usuario", "email": None}
         
@@ -217,46 +198,40 @@ class GlobalDataManager:
                     "last_login": user.get('last_login')
                 }
         except Exception as e:
-            print(f"⚠️ Error obteniendo info de usuario: {e}")
+            print(f"Error obteniendo info de usuario: {e}")
         
         return {"name": "Usuario", "email": None}
 
 class GlobalGeminiAI:
-    """IA para el asistente global con acceso a BD"""
     
     def __init__(self, data_manager, user_name="Usuario"):
-        self.api_key = os.getenv("GEMINI_API_KEY", "AIzaSyAm9tYSXoKQfqIBGb_5bWJXcu6r0-Oridk")
+        self.api_key = os.getenv("GEMINI_API_KEY", "YOUR GEMINI APYT KEY")
         self.model = None
         self.data_manager = data_manager
         self.user_name = user_name
         self.initialize()
     
     def initialize(self):
-        """Inicializar Gemini AI"""
         try:
             genai.configure(api_key=self.api_key)
             self.model = genai.GenerativeModel('gemini-2.5-flash')
-            print("✅ Gemini AI global inicializado")
+            print("Gemini AI global inicializado")
             return True
         except Exception as e:
-            print(f"❌ Error inicializando Gemini global: {e}")
+            print(f"Error inicializando Gemini global: {e}")
             return False
     
     def generate_response(self, user_query):
-        """Generar respuesta con contexto global y datos de BD"""
         if not self.model:
             return f"Lo siento {self.user_name}, no puedo conectarme con la IA en este momento."
         
         try:
-            # Obtener contexto global CON DATOS DE BD
             context_data = self.data_manager.get_context_data()
             user_info = self.data_manager.get_user_info()
             
-            # Actualizar nombre del usuario desde BD si está disponible
             if user_info.get('name') and user_info['name'] != 'Usuario':
                 self.user_name = user_info['name']
             
-            # Formatear contexto para el prompt - ¡CORREGIDO!
             context_text = f"""CONTEXTO DE {self.user_name.upper()}:
                 Hora actual: {context_data['current_time']['time']}
                 Fecha: {context_data['current_time']['date']} ({context_data['current_time']['day_name']})
@@ -264,7 +239,6 @@ class GlobalGeminiAI:
 
             """
             
-            # ✅ CORREGIDO: Añadir información de TAREAS desde BD
             if isinstance(context_data.get('database_tasks'), dict):
                 tasks_info = context_data['database_tasks']
                 if tasks_info.get('pending', 0) > 0:
@@ -282,7 +256,6 @@ class GlobalGeminiAI:
                     title = task.get('title', 'Sin título')
                     context_text += f"{i}. {title}\n"
             
-            # ✅ CORREGIDO: Añadir EVENTOS desde BD
             if isinstance(context_data.get('database_events'), dict):
                 events_info = context_data['database_events']
                 upcoming_events = events_info.get('upcoming', [])
@@ -300,7 +273,6 @@ class GlobalGeminiAI:
                     title = event.get('title', 'Sin título')
                     context_text += f"{i}. {title}\n"
             
-            # ✅ CORREGIDO: Añadir RECORDATORIOS desde BD
             if isinstance(context_data.get('database_reminders'), dict):
                 reminders_info = context_data['database_reminders']
                 active_list = reminders_info.get('active_list', [])
@@ -317,7 +289,6 @@ class GlobalGeminiAI:
                     title = reminder.get('title', 'Sin título')
                     context_text += f"{i}. {title}\n"
             
-            # Si no hay ningún dato
             if context_text == f"""CONTEXTO DE {self.user_name.upper()}:
                 Hora actual: {context_data['current_time']['time']}
                 Fecha: {context_data['current_time']['date']} ({context_data['current_time']['day_name']})
@@ -326,7 +297,6 @@ class GlobalGeminiAI:
             """:
                 context_text += "No hay tareas, eventos o recordatorios programados para hoy.\n"
             
-            # Crear prompt PERSONALIZADO con capacidad de BD
             system_prompt = f"""Eres "Asistente", un asistente virtual personal inteligente integrado en una aplicación de gestión.
 
             DATOS DEL USUARIO:
@@ -375,13 +345,12 @@ class GlobalGeminiAI:
             
         except Exception as e:
             error_msg = f"Lo siento {self.user_name}, hubo un error al procesar tu solicitud: {str(e)[:100]}"
-            print(f"❌ Error Gemini global: {e}")
+            print(f"Error Gemini global: {e}")
             import traceback
             traceback.print_exc()
             return error_msg
     
     def analyze_productivity(self):
-        """Analizar productividad del usuario basado en datos de BD"""
         if not self.model:
             return "No puedo analizar la productividad en este momento."
         
@@ -418,12 +387,11 @@ class GlobalGeminiAI:
 class GlobalVoiceAssistant(QObject):
     """Asistente de voz global que funciona en toda la aplicación"""
     
-    # Señales
-    command_received = Signal(str)      # Comando de voz recibido
-    response_ready = Signal(str)        # Respuesta lista para mostrar/hablar
-    status_changed = Signal(str)        # Cambio de estado
-    error_occurred = Signal(str)        # Error
-    database_connected = Signal(bool)   # Estado de conexión a BD
+    command_received = Signal(str)      
+    response_ready = Signal(str)        
+    status_changed = Signal(str)       
+    error_occurred = Signal(str)    
+    database_connected = Signal(bool)  
     
     def __init__(self, user_id=None, user_name="Usuario"):
         super().__init__()
@@ -457,10 +425,10 @@ class GlobalVoiceAssistant(QObject):
         
         # Verificar conexión a BD
         if user_id and self.data_manager.db:
-            print(f"✅ Asistente global conectado a BD para usuario: {user_id}")
+            print(f"Asistente global conectado a BD para usuario: {user_id}")
             self.database_connected.emit(True)
         else:
-            print("⚠️ Asistente global funcionando sin base de datos")
+            print("Asistente global funcionando sin base de datos")
             self.database_connected.emit(False)
         
         # Iniciar escucha en hilo separado
@@ -468,10 +436,9 @@ class GlobalVoiceAssistant(QObject):
         self.running = True
         self.start_listening_thread()
         
-        print(f"✅ Asistente global inicializado para: {user_name} (ID: {user_id})")
+        print(f"Asistente global inicializado para: {user_name} (ID: {user_id})")
     
     def update_user_info(self, user_id=None, user_name=None):
-        """Actualizar información del usuario"""
         if user_id:
             self.user_id = user_id
             self.data_manager.set_user_id(user_id)
@@ -482,11 +449,9 @@ class GlobalVoiceAssistant(QObject):
             self.gemini.user_name = user_name
     
     def setup_tts(self):
-        """Configurar texto a voz"""
         try:
             self.tts_engine = pyttsx3.init()
             
-            # Configurar voz en español
             voices = self.tts_engine.getProperty('voices')
             spanish_voice = None
             
@@ -498,33 +463,30 @@ class GlobalVoiceAssistant(QObject):
             if spanish_voice:
                 self.tts_engine.setProperty('voice', spanish_voice)
             
-            # Configurar velocidad y volumen
             self.tts_engine.setProperty('rate', 150)
             self.tts_engine.setProperty('volume', 0.9)
             
-            print("✅ TTS global configurado")
+            print("TTS global configurado")
             
         except Exception as e:
-            print(f"❌ Error configurando TTS global: {e}")
+            print(f"Error configurando TTS global: {e}")
     
     def setup_speech_recognition(self):
         """Configurar reconocimiento de voz"""
         try:
             self.recognizer = sr.Recognizer()
             
-            # Intentar usar micrófono disponible
             try:
                 self.microphone = sr.Microphone(device_index=0)
-                print("✅ Micrófono global configurado")
+                print("Micrófono global configurado")
             except:
                 self.microphone = sr.Microphone()
                 
         except Exception as e:
-            print(f"❌ Error configurando reconocimiento de voz global: {e}")
+            print(f"Error configurando reconocimiento de voz global: {e}")
             self.error_occurred.emit(f"Error de micrófono: {e}")
     
     def speak(self, text):
-        """Hablar texto (no bloqueante)"""
         if not self.tts_engine:
             return
         
@@ -533,33 +495,28 @@ class GlobalVoiceAssistant(QObject):
                 self.tts_engine.say(text)
                 self.tts_engine.runAndWait()
             except Exception as e:
-                print(f"❌ Error en hilo de TTS global: {e}")
+                print(f"Error en hilo de TTS global: {e}")
         
         thread = threading.Thread(target=speak_thread, daemon=True)
         thread.start()
     
     def start_listening_thread(self):
-        """Iniciar hilo de escucha continua"""
         def listen_loop():
-            print("🔊 Asistente global escuchando...")
+            print("Asistente global escuchando...")
             
             while self.running:
                 try:
                     with self.microphone as source:
-                        # Ajustar para ruido ambiental
                         self.recognizer.adjust_for_ambient_noise(source, duration=0.3)
                         
                         try:
-                            # Escuchar con timeout corto
                             audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=3)
                             
-                            # Reconocer audio
                             text = self.recognizer.recognize_google(audio, language='es-ES')
                             text = text.lower()
                             
-                            # Verificar palabra clave
                             if self.keyword in text:
-                                print(f"✅ Palabra clave detectada: {text}")
+                                print(f"Palabra clave detectada: {text}")
                                 self.command_queue.put(text)
                                 self.command_received.emit(text)
                                 
@@ -569,52 +526,44 @@ class GlobalVoiceAssistant(QObject):
                             pass
                         except Exception as e:
                             if "exceptions must derive from BaseException" not in str(e):
-                                print(f"⚠️ Error en reconocimiento: {e}")
+                                print(f"Error en reconocimiento: {e}")
                     
                 except Exception as e:
-                    print(f"⚠️ Error en bucle de escucha: {e}")
+                    print(f"Error en bucle de escucha: {e}")
                     time.sleep(0.5)
         
         self.listening_thread = threading.Thread(target=listen_loop, daemon=True)
         self.listening_thread.start()
     
     def process_commands(self):
-        """Procesar comandos en cola"""
         if not self.command_queue.empty():
             command = self.command_queue.get()
             self.process_command(command)
     
     def process_command(self, command):
-        """Procesar un comando específico"""
         try:
-            # Extraer la consulta después de "asistente"
             if self.keyword in command:
                 query = command.replace(self.keyword, "").strip()
                 
                 if not query:
                     response = "¿Sí? ¿En qué puedo ayudarte?"
                 else:
-                    # Verificar si es un comando especial de BD
                     if "productividad" in query.lower() or "análisis" in query.lower():
                         response = self.gemini.analyze_productivity()
                     elif "tareas" in query.lower() or "pendiente" in query.lower():
-                        # Respuesta enfocada en tareas
                         context = self.data_manager.get_context_data()
                         if context.get('database_tasks', {}).get('pending', 0) > 0:
                             response = f"{self.user_name}, tienes {context['database_tasks']['pending']} tareas pendientes. ¿Quieres que te las liste?"
                         else:
                             response = f"{self.user_name}, no tienes tareas pendientes. ¡Excelente trabajo!"
                     else:
-                        # Obtener respuesta de Gemini con contexto de BD
                         response = self.gemini.generate_response(query)
                 
-                # Emitir respuesta
                 self.response_ready.emit(response)
                 
-                # Hablar la respuesta
                 self.speak(response)
                 
-                print(f"🤖 Asistente global: {response[:50]}...")
+                print(f"Asistente global: {response[:50]}...")
                 
         except Exception as e:
             error_msg = f"Error procesando comando: {e}"
@@ -622,31 +571,26 @@ class GlobalVoiceAssistant(QObject):
             self.error_occurred.emit(error_msg)
     
     def register_callbacks(self, callbacks):
-        """Registrar callbacks para obtener datos de la aplicación"""
         self.data_manager.register_callbacks(callbacks)
     
     def get_database_status(self):
-        """Obtener estado de la conexión a BD"""
         return self.data_manager.db is not None
     
     def stop(self):
-        """Detener el asistente"""
         self.running = False
         if self.listening_thread:
             self.listening_thread.join(timeout=1)
 
-# Instancia global única
 global_assistant = None
 
 def get_global_assistant(user_id=None, user_name="Usuario"):
-    """Obtener la instancia global del asistente (singleton)"""
     global global_assistant
     if global_assistant is None:
         global_assistant = GlobalVoiceAssistant(user_id, user_name)
     else:
-        # Si ya existe, actualizar información del usuario
         if user_id and global_assistant.user_id != user_id:
             global_assistant.update_user_info(user_id, user_name)
         elif user_name and global_assistant.user_name != user_name:
             global_assistant.update_user_info(None, user_name)
+
     return global_assistant
