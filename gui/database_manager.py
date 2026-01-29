@@ -1,7 +1,4 @@
-"""
-Gestor de base de datos SQLite para el Asistente Personal.
-Maneja todas las operaciones de base de datos para usuarios, tareas, recordatorios, eventos, notas, etc.
-"""
+
 import sqlite3
 import os
 from datetime import datetime
@@ -9,7 +6,6 @@ import json
 from typing import Dict, List, Optional, Any
 import logging
 
-# Configurar logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -29,15 +25,14 @@ class DatabaseManager:
         if self._initialized:
             return
             
-        # Usar ruta absoluta para la base de datos
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        parent_dir = os.path.dirname(current_dir)  # Subir un nivel si estamos en gui/
+        parent_dir = os.path.dirname(current_dir) 
         data_dir = os.path.join(parent_dir, "data")
         
         self.db_path = os.path.join(data_dir, "asistente_personal.db")
         self.current_user = None
         
-        print(f"📁 Ruta de base de datos: {self.db_path}")
+        print(f"Ruta de base de datos: {self.db_path}")
         self._create_directories()
         self._init_database()
         self._initialized = True
@@ -45,12 +40,12 @@ class DatabaseManager:
     def _create_directories(self):
         """Crear directorios necesarios"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        logger.info(f"✅ Directorio creado: {os.path.dirname(self.db_path)}")
+        logger.info(f"Directorio creado: {os.path.dirname(self.db_path)}")
     
     def _init_database(self):
         """Inicializar la base de datos con todas las tablas"""
         try:
-            logger.info(f"🔄 Inicializando base de datos en: {self.db_path}")
+            logger.info(f"Inicializando base de datos en: {self.db_path}")
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -172,14 +167,14 @@ class DatabaseManager:
             conn.commit()
             conn.close()
             
-            logger.info("✅ Base de datos inicializada correctamente")
+            logger.info("Base de datos inicializada correctamente")
             DatabaseManager._database_initialized = True
             
             # Verificar tablas creadas
             self._verify_tables()
             
         except Exception as e:
-            logger.error(f"❌ Error inicializando base de datos: {e}")
+            logger.error(f"Error inicializando base de datos: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -193,13 +188,13 @@ class DatabaseManager:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
             tables = cursor.fetchall()
             
-            print("📊 Tablas en la base de datos:")
+            print("Tablas en la base de datos:")
             for table in tables:
                 print(f"  - {table[0]}")
             
             conn.close()
         except Exception as e:
-            logger.error(f"❌ Error verificando tablas: {e}")
+            logger.error(f"Error verificando tablas: {e}")
     
     def set_current_user(self, user_id: str):
         """Establecer el usuario actual"""
@@ -229,11 +224,11 @@ class DatabaseManager:
             conn.commit()
             conn.close()
             
-            logger.info(f"✅ Usuario creado/actualizado: {user_data.get('name')}")
+            logger.info(f"Usuario creado/actualizado: {user_data.get('name')}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error creando usuario: {e}")
+            logger.error(f"Error creando usuario: {e}")
             return False
     
     def get_user(self, user_id: str) -> Optional[Dict]:
@@ -260,7 +255,7 @@ class DatabaseManager:
             return None
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo usuario: {e}")
+            logger.error(f"Error obteniendo usuario: {e}")
             return None
     
     def update_user_last_login(self, user_id: str):
@@ -279,7 +274,7 @@ class DatabaseManager:
             logger.debug(f"Último login actualizado para usuario: {user_id}")
             
         except Exception as e:
-            logger.error(f"❌ Error actualizando último login: {e}")
+            logger.error(f"Error actualizando último login: {e}")
     
     def update_user_settings(self, user_id: str, settings: Dict):
         """Actualizar configuración del usuario"""
@@ -297,7 +292,7 @@ class DatabaseManager:
             logger.debug(f"Configuración actualizada para usuario: {user_id}")
             
         except Exception as e:
-            logger.error(f"❌ Error actualizando configuración: {e}")
+            logger.error(f"Error actualizando configuración: {e}")
     
     # ===== OPERACIONES DE TAREAS =====
     
@@ -327,7 +322,7 @@ class DatabaseManager:
                     self.current_user
                 ))
                 task_id = task_data['id']
-                logger.debug(f"✅ Tarea actualizada: {task_id}")
+                logger.debug(f"Tarea actualizada: {task_id}")
             else:
                 # Insertar nueva tarea
                 cursor.execute('''
@@ -346,14 +341,14 @@ class DatabaseManager:
                     datetime.now().isoformat()
                 ))
                 task_id = cursor.lastrowid
-                logger.debug(f"✅ Nueva tarea guardada: {task_id}")
+                logger.debug(f"Nueva tarea guardada: {task_id}")
             
             conn.commit()
             conn.close()
             return task_id
             
         except Exception as e:
-            logger.error(f"❌ Error guardando tarea: {e}")
+            logger.error(f"Error guardando tarea: {e}")
             import traceback
             traceback.print_exc()
             return -1
@@ -362,7 +357,7 @@ class DatabaseManager:
         """Obtener todas las tareas del usuario actual con filtros opcionales"""
         try:
             if not self.current_user:
-                logger.warning("⚠️ No hay usuario establecido")
+                logger.warning("No hay usuario establecido")
                 return []
                 
             conn = sqlite3.connect(self.db_path)
@@ -410,11 +405,11 @@ class DatabaseManager:
                 })
             
             conn.close()
-            logger.debug(f"✅ Tareas obtenidas: {len(tasks)}")
+            logger.debug(f"Tareas obtenidas: {len(tasks)}")
             return tasks
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo tareas: {e}")
+            logger.error(f"Error obteniendo tareas: {e}")
             return []
     
     def get_task(self, task_id: int) -> Optional[Dict]:
@@ -445,7 +440,7 @@ class DatabaseManager:
             return None
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo tarea: {e}")
+            logger.error(f"Error obteniendo tarea: {e}")
             return None
     
     def delete_task(self, task_id: int) -> bool:
@@ -462,11 +457,11 @@ class DatabaseManager:
             deleted = cursor.rowcount > 0
             conn.close()
             
-            logger.debug(f"✅ Tarea eliminada: {task_id}" if deleted else f"⚠️ Tarea no encontrada: {task_id}")
+            logger.debug(f"Tarea eliminada: {task_id}" if deleted else f"Tarea no encontrada: {task_id}")
             return deleted
             
         except Exception as e:
-            logger.error(f"❌ Error eliminando tarea: {e}")
+            logger.error(f"Error eliminando tarea: {e}")
             return False
     
     def get_tasks_summary(self) -> Dict:
@@ -569,14 +564,14 @@ class DatabaseManager:
                     datetime.now().isoformat()
                 ))
                 reminder_id = cursor.lastrowid
-                logger.debug(f"✅ Nuevo recordatorio guardado: {reminder_id}")
+                logger.debug(f"Nuevo recordatorio guardado: {reminder_id}")
             
             conn.commit()
             conn.close()
             return reminder_id
             
         except Exception as e:
-            logger.error(f"❌ Error guardando recordatorio: {e}")
+            logger.error(f"Error guardando recordatorio: {e}")
             import traceback
             traceback.print_exc()
             return -1
@@ -637,11 +632,11 @@ class DatabaseManager:
                 })
             
             conn.close()
-            logger.debug(f"✅ Recordatorios obtenidos: {len(reminders)}")
+            logger.debug(f"Recordatorios obtenidos: {len(reminders)}")
             return reminders
             
         except Exception as e:
-            logger.error(f"❌ Error obteniendo recordatorios: {e}")
+            logger.error(f"Error obteniendo recordatorios: {e}")
             return []
     
     def delete_reminder(self, reminder_id: int) -> bool:
@@ -658,11 +653,11 @@ class DatabaseManager:
             deleted = cursor.rowcount > 0
             conn.close()
             
-            logger.debug(f"✅ Recordatorio eliminado: {reminder_id}" if deleted else f"⚠️ Recordatorio no encontrado: {reminder_id}")
+            logger.debug(f"Recordatorio eliminado: {reminder_id}" if deleted else f"Recordatorio no encontrado: {reminder_id}")
             return deleted
             
         except Exception as e:
-            logger.error(f"❌ Error eliminando recordatorio: {e}")
+            logger.error(f"Error eliminando recordatorio: {e}")
             return False
     
     # ===== OPERACIONES DE CONVERSACIONES (CHAT) =====
@@ -984,4 +979,5 @@ class DatabaseManager:
 # Función para obtener instancia única del gestor de base de datos
 def get_database():
     """Obtener instancia única del gestor de base de datos"""
+
     return DatabaseManager()
