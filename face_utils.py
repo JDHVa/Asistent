@@ -424,16 +424,16 @@ if __name__ == "__main__":
     
     print("1. Probando cálculo de calidad...")
     score, problems = utils.calculate_face_quality(test_image)
-    print(f"   Puntuación: {score}/100")
-    print(f"   Problemas: {problems}")
+    print(f"Puntuación: {score}/100")
+    print(f"Problemas: {problems}")
     
     print("\n2. Probando mejora de imagen...")
     enhanced = utils.enhance_face_image(test_image)
-    print(f"   Imagen mejorada: {enhanced.shape}")
+    print(f"Imagen mejorada: {enhanced.shape}")
     
     print("\n3. Probando preprocesamiento...")
     processed = utils.preprocess_face(test_image)
-    print(f"   Imagen preprocesada: {processed.shape if processed is not None else 'None'}")
+    print(f"Imagen preprocesada: {processed.shape if processed is not None else 'None'}")
     
     print("\n4. Probando dibujo de cuadros...")
     face_locations = [(30, 30, 70, 70), (100, 100, 150, 150)]
@@ -441,6 +441,7 @@ if __name__ == "__main__":
     confidences = [0.85, 0.45]
     
     drawn = utils.draw_face_boxes(test_image, face_locations, names, confidences)
-    print(f"   Imagen con cuadros dibujada")
+    print(f"Imagen con cuadros dibujada")
     
+
     print("\nPruebas completadas")
