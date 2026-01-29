@@ -332,12 +332,10 @@ class FaceSystem:
         display_frame = frame.copy()
         user_data = None
         
-        # Si no hay sistema facial, usar detección básica
         if not self.face_system:
             return self.fallback_face_detection(display_frame), None
         
         try:
-            # 1. Detectar rostros usando el método CORRECTO
             face_locations = self.face_system.detect_faces(frame)
             
             if not face_locations:
@@ -347,18 +345,14 @@ class FaceSystem:
                 self.consecutive_matches = 0
                 return display_frame, None
             
-            # Tomar el primer rostro
             x1, y1, x2, y2 = face_locations[0]
             face_region = frame[y1:y2, x1:x2]
             
-            # Validar tamaño del rostro
             if face_region.size == 0:
                 return display_frame, None
             
-            # 2. Reconocer rostro usando el método CORRECTO
             name, confidence = self.face_system.recognize_face(face_region)
             
-            # Dibujar resultados
             color = (0, 255, 0) if name != "Desconocido" and confidence >= 0.6 else (0, 0, 255)
             cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
             
@@ -366,7 +360,6 @@ class FaceSystem:
             cv2.putText(display_frame, label, (x1, y1-10), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             
-            # Lógica de autenticación
             if name != "Desconocido" and confidence >= 0.6:
                 if name == self.last_detected_name:
                     self.consecutive_matches += 1
@@ -374,16 +367,12 @@ class FaceSystem:
                     self.consecutive_matches = 1
                     self.last_detected_name = name
                 
-                # Actualizar progreso
                 progress = min(int((self.consecutive_matches / self.REQUIRED_MATCHES) * 100), 100)
                 self.progress_bar.setValue(progress)
                 
-                # Actualizar estado
                 self.update_status(f"Reconociendo: {name}...", "🔍", "#fbbc04")
                 
-                # Si tenemos suficientes coincidencias consecutivas
                 if self.consecutive_matches >= self.REQUIRED_MATCHES:
-                    # Preparar datos del usuario
                     user_data = {
                         "authenticated": True,
                         "name": name,
@@ -408,7 +397,7 @@ class FaceSystem:
             return display_frame, None
             
         except Exception as e:
-            print(f"❌ Error en autenticación: {e}")
+            print(f"Error en autenticación: {e}")
             self.update_status("Error en reconocimiento", "⚠️", "#ea4335")
             return display_frame, None
 
@@ -425,19 +414,16 @@ class FaceSystem:
             cv2.putText(frame, "Rostro Detectado", (x, y-10), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             
-            # Actualizar UI
             self.update_status("Rostro detectado (modo básico)", "👤", "#fbbc04")
             self.face_detected = True
             
-            # Simular progreso
             if not self.auth_start_time:
-                self.auth_start_time = datetime.now()  # ¡USANDO datetime!
+                self.auth_start_time = datetime.now()  
             
             elapsed = (datetime.now() - self.auth_start_time).total_seconds()
             progress = min(int((elapsed / 3) * 100), 100)
             self.progress_bar.setValue(progress)
             
-            # Simular autenticación después de 3 segundos
             if elapsed > 3:
                 user_data = {
                     "authenticated": True,
@@ -458,7 +444,7 @@ def test_face_system():
         print(f"Sistema inicializado. Usuarios: {face_system.get_user_count()}")
         
         if face_system.get_user_count() > 0:
-            print(f"   Usuarios registrados: {', '.join(face_system.get_user_list())}")
+            print(f"Usuarios registrados: {', '.join(face_system.get_user_list())}")
         
         return face_system
         
@@ -469,4 +455,5 @@ def test_face_system():
 if __name__ == "__main__":
     system = test_face_system()
     if system:
+
         print("FaceSystem está funcionando correctamente.")
