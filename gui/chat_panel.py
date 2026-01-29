@@ -1,8 +1,4 @@
-"""
-Panel de chat interactivo con el asistente IA - VERSIÓN COMPLETA
-Integración de Gemini AI y funcionalidades de voz
-"""
-# Plantilla completa de imports para PySide6 widgets
+#Son todos los imports para evitar cualqueir tipo de error
 from PySide6.QtWidgets import (
     QWidget, QMainWindow, QDialog, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
@@ -39,27 +35,26 @@ import threading
 from assistant_managers import gemini_manager, voice_manager
 from database_manager import get_database
 
-# Intento de importar bibliotecas de voz con manejo de errores
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
-    print("⚠️ Google Generative AI no está disponible. Instala: pip install google-generativeai")
+    print("Google Generative AI no está disponible. Instala: pip install google-generativeai")
 
 try:
     import speech_recognition as sr
     SPEECH_RECOGNITION_AVAILABLE = True
 except ImportError:
     SPEECH_RECOGNITION_AVAILABLE = False
-    print("⚠️ Speech Recognition no está disponible. Instala: pip install SpeechRecognition")
+    print("Speech Recognition no está disponible. Instala: pip install SpeechRecognition")
 
 try:
     import pyttsx3
     TTS_AVAILABLE = True
 except ImportError:
     TTS_AVAILABLE = False
-    print("⚠️ pyttsx3 no está disponible. Instala: pip install pyttsx3")
+    print("pyttsx3 no está disponible. Instala: pip install pyttsx3")
 
 # Cargar variables de entorno
 load_dotenv()
@@ -277,9 +272,9 @@ class ChatPanel(QWidget):
         """Activar/desactivar voz"""
         self.voice_enabled = (state == Qt.Checked)
         if self.voice_enabled:
-            print("🔊 Voz activada")
+            print("Voz activada")
         else:
-            print("🔇 Voz desactivada")
+            print("Voz desactivada")
     
     def create_history_panel(self):
         """Crear panel de historial de conversaciones"""
@@ -295,7 +290,7 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         
         # Título
-        title = QLabel("📚 Historial")
+        title = QLabel("Historial")
         title.setStyleSheet("""
             QLabel {
                 color: #e8eaed;
@@ -395,7 +390,7 @@ class ChatPanel(QWidget):
             actions_layout.addWidget(btn)
         
         # Botón de voz (solo si está disponible)
-        if self.voice_manager.microphone_available:  # <-- CAMBIO AQUÍ
+        if self.voice_manager.microphone_available:
             self.voice_btn = QPushButton("🎤")
             self.voice_btn.setFixedSize(30, 30)
             self.voice_btn.setToolTip("Hablar mensaje (mantén presionado)")
@@ -695,7 +690,7 @@ class ChatPanel(QWidget):
                 QTimer.singleShot(0, lambda: self.message_input.setPlainText(recognized_text))
             elif recognized_text:
                 # Mostrar error en el chat
-                QTimer.singleShot(0, lambda: self.add_message(f"❌ Voz: {recognized_text}", is_user=False))
+                QTimer.singleShot(0, lambda: self.add_message(f"Voz: {recognized_text}", is_user=False))
                 
         except Exception as e:
             error_msg = f"Error en reconocimiento de voz: {str(e)}"
@@ -777,4 +772,5 @@ if __name__ == "__main__":
     window.resize(1200, 800)
     window.show()
     
+
     sys.exit(app.exec())
