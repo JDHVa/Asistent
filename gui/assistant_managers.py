@@ -44,12 +44,12 @@ class GeminiManager:
             
             try:
                 self.model = genai.GenerativeModel('gemini-2.5-flash')
-                print("✅ Modelo Gemini 'gemini-2.5-flash' inicializado")
+                print("Modelo Gemini 'gemini-2.5-flash' inicializado")
                 return True
             except Exception:
                 try:
                     self.model = genai.GenerativeModel('gemini-pro')
-                    print("✅ Modelo Gemini 'gemini-pro' inicializado")
+                    print("Modelo Gemini 'gemini-pro' inicializado")
                     return True
                 except Exception:
                     return False
@@ -145,7 +145,7 @@ class VoiceManager:
     def initialize_voice(self):
         self.initialize_tts()
         self.initialize_speech_recognition()
-        print(f"✅ Estado de voz - TTS: {'✅' if self.tts_available else 'Error'}, Micrófono: {'✅' if self.microphone_available else 'Error'}")
+        print(f"Estado de voz - TTS: {'✅' if self.tts_available else 'Error'}, Micrófono: {'✅' if self.microphone_available else 'Error'}")
     
     def initialize_tts(self):
         try:
@@ -159,7 +159,7 @@ class VoiceManager:
                 for voice in voices:
                     if 'spanish' in voice.name.lower() or 'español' in voice.name.lower():
                         self.tts_engine.setProperty('voice', voice.id)
-                        print(f"✅ Voz configurada: {voice.name}")
+                        print(f"Voz configurada: {voice.name}")
                         break
             except:
                 pass
@@ -167,7 +167,7 @@ class VoiceManager:
             self.tts_engine.setProperty('rate', 150)
             self.tts_engine.setProperty('volume', 0.9)
             self.tts_available = True
-            print("✅ TTS inicializado correctamente")
+            print("TTS inicializado correctamente")
             
         except Exception:
             self.tts_available = False
@@ -184,14 +184,14 @@ class VoiceManager:
                 try:
                     self.microphone = sr.Microphone(device_index=0)
                     self.microphone_available = True
-                    print("✅ Micrófono detectado (Windows)")
+                    print("Micrófono detectado (Windows)")
                 except:
                     pass
             else:
                 try:
                     self.microphone = sr.Microphone()
                     self.microphone_available = True
-                    print("✅ Micrófono detectado")
+                    print("Micrófono detectado")
                 except Exception:
                     pass
                         
@@ -229,7 +229,7 @@ class VoiceManager:
                 audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
             
             text = self.recognizer.recognize_google(audio, language='es-ES')
-            print(f"✅ Reconocido: {text}")
+            print(f"Reconocido: {text}")
             return text
             
         except sr.WaitTimeoutError:
@@ -249,4 +249,5 @@ class VoiceManager:
         return self.tts_available
 
 gemini_manager = GeminiManager()
+
 voice_manager = VoiceManager()
